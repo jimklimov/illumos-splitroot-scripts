@@ -1,0 +1,449 @@
+#!/sbin/sh
+#
+# CDDL HEADER START
+#
+# The contents of this file are subject to the terms of the
+# Common Development and Distribution License (the "License").
+# You may not use this file except in compliance with the License.
+#
+# You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
+# or http://www.opensolaris.org/os/licensing.
+# See the License for the specific language governing permissions
+# and limitations under the License.
+#
+# When distributing Covered Code, include this CDDL HEADER in each
+# file and include the License file at usr/src/OPENSOLARIS.LICENSE.
+# If applicable, add the following below this CDDL HEADER, with the
+# fields enclosed by brackets "[]" replaced with your own identifying
+# information: Portions Copyright [yyyy] [name of copyright owner]
+#
+# CDDL HEADER END
+#
+#
+# Copyright (c) 1992, 2010, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2013 by Jim Klimov
+#
+
+#
+# This script is roughly based on fs-root and fs-minimal with the aim of
+# providing a useable mounted operating environment early in the boot for 
+# systems with ZFS root split into several datasets, project tracked as
+#   https://www.illumos.org/issues/829
+#
+# Some other initialization methods, including network/physical instances
+# which are dependencies for the default filesystem/root implementation and
+# further mounting methods, actualy depend on /usr or even more (in case of
+# NWAM). In case of networked boot, this might be provided by the miniroot;
+# in case of a ZFS monoroot bootfs the needed files are instantly available;
+# in case of a ZFS split-root bootfs there is a loophole which should be
+# solved by this script; and in case of local non-ZFS rootfs components
+# (on SVM metadevices, on UFS/VxFS, etc.) the user may be out of luck -
+# at least for NWAM. The legacy physical network script happens to work
+# successfully despite the absence of a /usr.
+#
+
+# Make sure that the libraries essential to this stage of booting can be found.
+LD_LIBRARY_PATH=/lib; export LD_LIBRARY_PATH
+
+. /lib/svc/share/smf_include.sh
+. /lib/svc/share/fs_include.sh
+
+# Report selected mounts to /dev/msglog beside SMF log?
+debug_mnt=0
+[ -f /.debug_mnt ] && debug_mnt=1
+
+# Report to console if enabled, and to SMF log always
+decho() {
+	[ x"$debug_mnt" = x1 ] && echo $* >/dev/msglog
+	echo $*
+}
+
+#
+# This script, like other fs-* initialization, assumes that the rootfs has
+# been mounted by kernel/bootloader already, and is the one to use at runtime.
+# The logic below is tailored for ZFS-rooted systems and should not fire nor
+# block any other possible cases.
+#
+readmnttab "/" < /etc/mnttab
+if [ "$fstype" != zfs ]; then
+	exit $SMF_EXIT_OK
+fi
+be=$special
+
+#
+# For some reason it is assumed in earlier scripts that zones are monoroot...
+#
+#if smf_is_nonglobalzone; then
+#	exit $SMF_EXIT_OK
+#fi
+
+#
+# A list of mountpoints that we've tried to mount explicitly, but
+# they happened to be non-ZFS in /etc/vfstab. Leave these to later
+# scripts for proper mounting in the correct order, and don't mount
+# now any datasets that might be in deeper branches of the FS tree.
+#
+_PRUNE=""
+# based on readvfstab() from fs_include.sh
+while read special fsckdev mountp fstype fsckpass automnt mntopts; do
+	case "$special" in
+		''|'-'|'#'*)	;;	# Ignore
+		*)	if [ x"$fstype" != xzfs -a x"$mountp" != x/ ]; then
+			### Note: a later script would fail if non-ZFS rootfs
+			### is specified in vfstab and actual root is on ZFS
+				_PRUNE="$_PRUNE $mountp"
+			fi
+			;;
+	esac
+done < $vfstab
+
+#
+# First of all, process child datasets of the currently booted rootfs.
+# For a number of reasons such as an untimely reboot while manipulating
+# with Boot Environments, the non-legacy mountpoint may be non-root based
+# (i.e. /a/usr) and would fail to mount. Fix the apparent mistakes.
+# Due to "beadm mount" or other mangling, current root fs may have
+# a shifted mountpoint, i.e. "/a" with separated subdir datasets
+# like usr becoming "/a/usr". We work around that below by trying
+# to set the correct mountpoint upon boot.
+#
+mountp_root="`/sbin/zfs get -H -o value mountpoint $be 2>/dev/null`"
+if [ "x$mountp_root" != "x/" ]; then
+	decho "Rootfs mountpoint not '/' but '$mountp_root', trying to fix."
+	# This might fail because rootds is busy... Might be cleaner
+	# on next boot, might not be.
+	/sbin/zfs set mountpoint=/ $be 2>/dev/null
+
+	# Now fix mountpoints of possible non-legacy non-inherited
+	# children of the current rootfs dataset (or those which
+	# inherited the wrong base):
+	/sbin/zfs list -rH -o name,mountpoint \
+	    -s mountpoint -t filesystem $be | \
+	while read child_ds child_mountp ; do
+		# Trailing name of the child dataset compared
+		# to the rootfs dataset; in comparisons also
+		# remember that $child_rel starts with a slash
+		child_rel="${child_ds//$be/}"
+
+		# Skip the rootfs dataset
+		[ x"$child_rel" != x -a \
+		  x"$child_rel" != x"$be" ] && \
+		case "x$child_mountp" in
+		    xlegacy)
+			decho "NOTE: not fixing '$child_ds' to use" \
+			    "'$child_rel' mountpoint: legacy mount"
+			;;
+		    "x$mountp_root$child_rel"|"x/?$child_rel"|x/tmp/tmp.*"$child_rel"|"x/$child_rel")
+		    ### /rootfs/usr|/a/usr|/b/usr|/tmp/tmp.*/usr|//usr
+			debug_mnt=1 decho "Fixing '$child_ds' to use" \
+			    "'$child_rel' mountpoint instead of" \
+			    "'$child_mountp': shifted in same root hierarchy"
+			/sbin/zfs set mountpoint="$child_rel" \
+			    "$be$child_rel"
+			;;
+		    "x$child_rel")
+		    ### /usr
+			decho "No need to fix '$child_ds' to use" \
+			    "'$child_rel' mountpoint instead of" \
+			    "'$child_mountp': already good"
+			;;
+		    *)
+		    ### A different value of mountpoint could be given
+		    ### on purpose, don't fix
+			decho "NOTE: not fixing '$child_ds' to use" \
+			    "'$child_rel' mountpoint instead of" \
+			    "'$child_mountp': seems set on purpose"
+			;;
+		esac
+	done
+fi ### $mountp_root != /
+
+#
+# Mount /usr and other file systems to be available in single user mode.
+# Currently, these are /var, /var/adm, /var/run and /tmp.  A change
+# here will require a modification to the following programs (and
+# documentation): /sbin/mountall, /sbin/umountall, and
+# /lib/svc/bin/svc.startd.
+#
+_CHILD_ONLY="/usr /var"
+_MAY_SHARE="/var/adm /tmp"
+# NOTE: /usr must be the first path for such mount attempts
+for fs in $_CHILD_ONLY $_MAY_SHARE; do
+	### Filter out non-ZFS filesystems and paths mounted under non-ZFS
+	### i.e. root is zfs, /var is ufs, /var/adm is zfs - skip all /var/*
+	for D in $_PRUNE; do
+		case "$fs" in 
+			"$D"|"$D"/*)
+			    decho "Not ZFS-mounting '$fs': equal or" \
+				"under a non-ZFS mountpoint '$D'"
+			    continue 2	### Process next mountpoint
+			    ;;
+		esac
+	done
+
+	### First try the legacy mounts listed in /etc/vfstab
+	### Pick out only ZFS filesystems
+	readvfstab $fs < $vfstab
+	if [ -n "$mountp" -a "$fstype" = zfs ]; then
+		mounted $mountp $mntopts $fstype < /etc/mnttab && \
+			decho "Not mounting: '$mountpt' from '$ds':" \
+			    "something already mounted" && \
+			continue
+
+		decho "Mounting '$fs': use '$mountp' of type '$fstype'" \
+		    "with opts '$mntopts' from vfstab"
+
+		mountfs -O $mountp $fstype $mntopts -
+		if [ $? != 0 ] ; then
+			msg="legacy-mount failed: $be$fs"
+			echo $msg
+			echo "$SMF_FMRI:" $msg >/dev/msglog
+			exit $SMF_EXIT_ERR_FATAL
+		fi
+		continue
+	fi
+
+	### Fall through to possible child datasets of current rootfs which
+	### are not legacy and can have any canmount value except "off"
+	mountpt=`/sbin/zfs get -H -o value mountpoint $be$fs 2>/dev/null`
+	mountcan=`/sbin/zfs get -H -o value canmount $be$fs 2>/dev/null`
+	if [ $? = 0 -a "x$mountpt" = "x$fs" ] ; then
+		if [ "x$mountcan" = "xoff" ] ; then
+			decho "Not mounting: '$mountpt' from '$be$fs':" \
+			    "canmount=off"
+			continue
+		fi
+	
+		DS="`readmnttab "$fs" < /etc/mnttab && echo "$special"`"
+		if [ "x$DS" != x -a "x$DS" = "x$be$fs" ]; then
+			decho "Already mounted: '$mountpt' from '$be$fs':" \
+				"in same root hierarchy"
+		else
+			decho "Mounting '$fs': use '$be$fs': in same" \
+			    "root hierarchy"
+			/sbin/zfs mount -O $be$fs
+			if [ $? != 0 ] ; then
+				msg="zfs-mount failed: $be$fs"
+				echo $msg
+				echo "$SMF_FMRI:" $msg >/dev/msglog
+			 	exit $SMF_EXIT_ERR_FATAL
+			fi
+		fi
+		continue
+	fi
+
+	# By the time we get here, /usr should be mounted or available as
+	# part of the monolithic root.
+	if [ ! -d /usr/bin -o ! -x /usr/sbin/devfsadm ]; then
+		msg="FATAL: /usr does not seem to be properly mounted!"
+		echo $msg
+		echo "$SMF_FMRI:" $msg >/dev/msglog
+		exit $SMF_EXIT_ERR_FATAL
+	fi
+
+	for D in $_CHILD_ONLY; do
+		if [ x"$fs" = x"$D" ]; then
+			decho "Not searching other trees to ZFS-mount" \
+			    "'$fs': must be a child of current bootfs"
+			continue	### Process next mountpoint
+		fi
+	done
+
+	# Some of these mountpoints can be shared among BEs in a separate tree.
+	# Find and mount matching automountable datasets; if there is choice -
+	# prefer the (first found?) one in the current rpool.
+	# Note that by now we should have a valid /usr and can use programs
+	mountdslist="`/sbin/zfs list -H -o canmount,mountpoint,name | awk \
+		'( $1 == "on" && $2 == "'"$fs"'" ) {print $3}' 2>/dev/null`"
+
+	if [ $? = 0 -a "x$mountdslist" != x ] ; then
+		DS="`readmnttab "$fs" < /etc/mnttab && echo "$special"`"
+		if [ "x`echo "$mountdslist"|wc -l|sed 's/ //g'`" = x1 ]; then
+			# We only had one hit
+			if [ "x$DS" != x -a "x$DS" = "x$mountdslist" ]; then
+				decho "Already mounted: '$fs' from" \
+				    "'$mountdslist': in same root hierarchy"
+				continue
+			fi
+
+			decho "Mounting '$fs': use '$mountdslist': the" \
+			    "only option"
+			/sbin/zfs mount -O "$mountdslist"
+			if [ $? != 0 ] ; then
+				msg="zfs-mount failed: $mountdslist"
+				echo $msg
+				echo "$SMF_FMRI:" $msg >/dev/msglog
+			 	exit $SMF_EXIT_ERR_FATAL
+			fi
+			continue
+		else
+			rpoolname="`echo "$be" | awk -F/ '{print $1}'`"
+			mountdspref="`echo "$mountdslist" | egrep '^'"$rpoolname/" | head -1`"
+			if [ $? = 0 -a "x$mountdspref" != x ] ; then
+				if [ "x$DS" != x -a "x$DS" = "x$mountdspref" ]; then
+					decho "Already mounted: '$fs'" \
+					    "from '$mountdspref': in same rpool"
+					continue
+				fi
+
+				decho "Mounting '$fs': use '$mountdspref':" \
+				    "same rpool"
+				/sbin/zfs mount -O "$mountdspref"
+				if [ $? != 0 ] ; then
+					msg="zfs-mount failed: $mountdspref"
+					echo $msg
+					echo "$SMF_FMRI:" $msg >/dev/msglog
+			 		exit $SMF_EXIT_ERR_FATAL
+				fi
+				continue
+			fi
+				# This is the least-definite situation: several
+			        # matching datasets exist, and none on the current
+				# rpool. See if any pools can be ruled out due to
+			        # bad (non-default) altroots.
+				for mountds in $mountdslist; do
+					dspool="`echo "$mountds" | awk -F/ '{print $1}'`"
+					dspool_altroot="`zpool list -H -o altroot "$dspool"`"
+					if [ $? = 0 -a \
+					     x"$dspool_altroot" = "x-" -o \
+					     x"$dspool_altroot" = "x/" ]; then
+						if [ "x$DS" != x -a "x$DS" = "x$mountds" ]; then
+						    decho "Already mounted:" \
+							"'$fs' from '$mountds':" \
+							"good altroot"
+						    continue
+						fi
+						decho "Mounting '$fs': use" \
+						    "'$mountds': good altroot"
+					        /sbin/zfs mount -O "$mountds"
+						if [ $? != 0 ] ; then
+							msg="zfs-mount failed: $mountds"
+							echo $msg
+							echo "$SMF_FMRI:" $msg >/dev/msglog
+					 		exit $SMF_EXIT_ERR_FATAL
+						fi
+						continue
+					fi
+				    done
+				fi
+		fi
+		# Technically, it is possible to have a pool named var with
+		# the default altroot and a dataset "var/adm" with an inherited
+		# mountpoint, which should automount into "/var/adm". TBD...
+done
+
+#
+# Update kernel driver.conf cache with any additional driver.conf
+# files found on /usr, and device permissions from /etc/minor_perm.
+#
+/usr/sbin/devfsadm -I -P
+
+mounted /var/run - tmpfs < /etc/mnttab
+if [ $? != 0 ] ; then
+	mountfs -O /var/run tmpfs - swap || exit $SMF_EXIT_ERR_FATAL
+fi
+
+if [ ! -f /var/run/tzsync ] ; then
+	/sbin/tzreload -I
+fi
+
+# Mount (other) possible children of current rootfs dataset
+_SKIP=0
+/sbin/zfs list -rH -o name -s name -t filesystem $be | \
+    while read ds ; do
+	# Skip the rootfs itself regardless of its mountpoint name
+	[ "$_SKIP" = 0 ] && _SKIP=1 && continue
+
+	mountpt="`/sbin/zfs get -H -o value mountpoint $ds`"
+	mountcan="`/sbin/zfs get -H -o value canmount $ds`"
+
+	if [ "x$mountpt" != "x" -a "$mountpt" != "legacy" ] ; then
+		mounted $mountpt - zfs < /etc/mnttab && \
+			decho "Not mounting: '$mountpt' from '$ds':" \
+			    "something already mounted" && \
+			continue
+
+		# Filter out non-ZFS filesystems and paths mounted under non-ZFS
+		# i.e. root is zfs, /var is ufs, /var/adm is zfs - skip all /var/*
+		for D in $_PRUNE; do
+			case "$mountpt" in 
+				"$D"|"$D"/*)
+				    decho "Not ZFS-mounting '$mountpt' from" \
+					"'$ds': equal or under a" \
+					"non-ZFS mountpoint '$D'"
+				    continue 2	### Process next mountpoint
+				    ;;
+			esac
+		done
+
+		if [ "x$mountcan" = "xoff" ] ; then
+			decho "Not mounting: '$mountpt' from '$ds':" \
+			    "canmount=off"
+			continue
+		fi
+
+		decho "Mounting '$mountpt': use '$ds':" \
+		    "in same root hierarchy"
+		/sbin/zfs mount -O "$ds"
+		if [ $? != 0 ] ; then
+			msg="zfs-mount failed: $ds"
+			echo $msg
+			echo "$SMF_FMRI:" $msg >/dev/msglog
+	 		exit $SMF_EXIT_ERR_FATAL
+		fi
+	fi
+done
+
+# Mount possible shared datasets from the dedicated hierarchy
+# This is only for global zone, local zones can have their delegated
+# dataset as the hierarchy container, if desired
+_SKIP=0
+rpool="`echo $be | awk -F/ '{print $1}'`"
+smf_is_nonglobalzone || \
+/sbin/zfs list -rH -o name -s name -t filesystem $rpool/SHARED 2>/dev/null | \
+    while read ds ; do
+	# Skip the root of the tree itself regardless of its mountpoint name
+	[ "$_SKIP" = 0 ] && _SKIP=1 && continue
+
+	mountpt="`/sbin/zfs get -H -o value mountpoint $ds`"
+	mountcan="`/sbin/zfs get -H -o value canmount $ds`"
+
+	if [ "x$mountpt" != "x" -a "$mountpt" != "legacy" ] ; then
+		if [ "x$mountcan" != "xon" ] ; then
+			decho "Not mounting: '$mountpt' from '$ds':" \
+			    "canmount!=on"
+			continue
+		fi
+
+		mounted $mountpt - zfs < /etc/mnttab  && \
+			decho "Not mounting: '$mountpt' from '$ds':" \
+			    "something already mounted" && \
+			continue
+
+		# Filter out non-ZFS filesystems and paths mounted under non-ZFS
+		# i.e. root is zfs, /var is ufs, /var/adm is zfs - skip all /var/*
+		for D in $_PRUNE; do
+			case "$mountpt" in 
+				"$D"|"$D"/*)
+				    decho "Not ZFS-mounting '$mountpt' from" \
+					"'$ds': equal or under a" \
+					"non-ZFS mountpoint '$D'"
+				    continue 2	### Process next mountpoint
+				    ;;
+			esac
+		done
+
+		decho "Mounting '$mountpt': use '$ds':" \
+		    "in shared root hierarchy"
+		/sbin/zfs mount -O "$ds"
+		if [ $? != 0 ] ; then
+			msg="zfs-mount failed: $ds"
+			echo $msg
+			echo "$SMF_FMRI:" $msg >/dev/msglog
+	 		exit $SMF_EXIT_ERR_FATAL
+		fi
+	fi
+done
+
+decho "fs-root-zfs: completed without fatal errors"
+exit $SMF_EXIT_OK

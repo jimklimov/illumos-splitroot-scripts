@@ -1,0 +1,294 @@
+--- /lib/svc/method/net-iptun.orig-oi151a8	2013-07-21 16:35:53.000000000 +0200
++++ /lib/svc/method/net-iptun	2013-11-27 00:47:30.900872107 +0100
+@@ -29,6 +29,13 @@
+ 
+ . /lib/svc/share/smf_include.sh
+ 
++# Even if the program is not found explicitly or as a builtin, use some
++# valid value in the variable, to have reasonable errors at least...
++[ -x /usr/bin/cut ] &&	CUT="/usr/bin/cut" ||	{ CUT=cut; builtin cut; }
++[ -x /usr/bin/cat ] &&	CAT="/usr/bin/cat" ||	{ CAT=cat; builtin cat; }
++[ -x /usr/bin/grep ] &&	GREP="/usr/bin/grep" ||	{ GREP=grep; builtin grep; }
++[ -x /usr/bin/uniq ] &&	UNIQ="/usr/bin/uniq" ||	{ UNIQ=uniq; builtin uniq; }
++
+ #
+ # Configure tunnels which were deferred by /lib/svc/method/net-physical (the
+ # svc:/network/physical service) since it depends on the tunnel source
+@@ -78,17 +85,29 @@
+ 	# different kinds of links that are simply named "ip.*".
+ 	#
+ 	tunnel_links=`get_tunnel_links`
+-	implicit_tunnel_names=`/usr/bin/ls -1 /etc/hostname.ip*.*[0-9] \
+-	    /etc/hostname6.ip*.*[0-9] 2> /dev/null | /usr/bin/cut -f2- -d. | \
+-	    /usr/bin/sort -u`
++	implicit_tunnel_names=`for I in /etc/hostname.ip*.*[0-9] \
++	    /etc/hostname6.ip*.*[0-9] ; do echo "$I"; done | \
++	    $CUT -f2- -d. | $GREP -v '*' | $UNIQ`
+ 	for intf_name in $implicit_tunnel_names; do
++		if echo "$implicit_tunnels" | $GREP -w "$intf_name" \
++			> /dev/null 2>&1; then continue; fi
+ 		/sbin/dladm show-link -pP $intf_name > /dev/null 2>&1
+ 		if [ $? -ne 0 ]; then
+ 	    		implicit_tunnels="$implicit_tunnels $intf_name"
+ 		fi
+ 	done
+-	tunnel_interfaces=`for intf in $tunnel_links $implicit_tunnels; do \
+-	    echo $intf; done | /usr/bin/sort -u`
++	if [ -x /usr/bin/sort ]; then
++		tunnel_interfaces=`for intf in $tunnel_links $implicit_tunnels; do \
++		    echo $intf; done | /usr/bin/sort -u`
++	else
++		tunnel_interfaces=""
++		for intf in $tunnel_links $implicit_tunnels; do \
++		    if ! echo "$tunnel_interfaces" | $GREP -w "$intf"; then
++			tunnel_interfaces="$tunnel_interfaces
++$intf"
++		    fi
++		done
++	fi
+ 
+ 	for intf_name in $tunnel_interfaces; do
+ 		if [ -f /etc/hostname.$intf_name ]; then
+@@ -127,14 +146,19 @@
+ 	# default value in the kernel will be used.
+ 	#
+ 	[ -f /etc/default/inetinit ] && . /etc/default/inetinit
+-	ACCEPT6TO4RELAY=`echo "$ACCEPT6TO4RELAY" | /usr/bin/tr '[A-Z]' '[a-z]'`
+-	if [ "$ACCEPT6TO4RELAY" = yes ]; then
++	case "$ACCEPT6TO4RELAY" in
++	    [Yy][Ee][Ss])
++		if [ ! -x /usr/sbin/6to4relay ]; then
++			echo "/usr/sbin/6to4relay: relay requested by config but binary not found"
++			exit $SMF_EXIT_ERR_CONFIG
++		fi
+ 		if [ "$RELAY6TO4ADDR" ]; then
+ 			/usr/sbin/6to4relay -e -a $RELAY6TO4ADDR
+ 		else
+ 			/usr/sbin/6to4relay -e
+ 		fi
+-	fi
++	    ;;
++	esac
+ 	;;
+ 
+ stop)
+--- /lib/svc/method/net-nwam.orig-oi151a8	2013-07-21 16:35:53.000000000 +0200
++++ /lib/svc/method/net-nwam	2013-11-27 00:03:04.621846351 +0100
+@@ -49,17 +49,25 @@
+ IPSEC_POLICY_DEFAULT_CONFIG_FILE=/etc/inet/ipsecinit.conf
+ 
+ # commands
+-BASENAME=/usr/bin/basename
+-CAT=/usr/bin/cat
+-CP=/usr/bin/cp
++# Even if the program is not found explicitly or as a builtin, use some
++# valid value in the variable, to have reasonable errors at least...
++[ -x /usr/bin/basename ] &&	BASENAME="/usr/bin/basename" ||
++				{ BASENAME=basename; builtin basename; }
++[ -x /usr/bin/cat ] &&	CAT="/usr/bin/cat" ||	{ CAT=cat; builtin cat; }
++[ -x /usr/bin/cp ] &&	CP="/usr/bin/cp" ||	{ CP=cp; builtin cp; }
++[ -x /usr/bin/cut ] &&	CUT="/usr/bin/cut" ||	{ CUT=cut; builtin cut; }
++[ -x /usr/bin/grep ] &&	GREP="/usr/bin/grep" ||	{ GREP=grep; builtin grep; }
++[ -x /usr/bin/mkdir ] &&	MKDIR="/usr/bin/mkdir" ||
++				{ MKDIR=mkdir; builtin mkdir; }
++[ -x /usr/bin/mkfifo ] &&	MKFIFO="/usr/bin/mkfifo" ||
++				{ MKFIFO=mkfifo; builtin mkfifo; }
++[ -x /usr/bin/rm ] &&	RM="/usr/bin/rm" ||	{ RM=rm; builtin rm; }
++[ -x /usr/bin/uniq ] &&	UNIQ="/usr/bin/uniq" ||	{ UNIQ=uniq; builtin uniq; }
++
+ DOMAINNAME=/usr/bin/domainname
+-GREP=/usr/bin/grep
+ LDAPCLIENT=/usr/sbin/ldapclient
+-MKDIR=/usr/bin/mkdir
+-MKFIFO=/usr/bin/mkfifo
+ NAWK=/usr/bin/nawk
+ NWAMCFG=/usr/sbin/nwamcfg
+-RM=/usr/bin/rm
+ SVCADM=/usr/sbin/svcadm
+ SVCCFG=/usr/sbin/svccfg
+ SVCPROP=/usr/bin/svcprop
+@@ -73,6 +81,44 @@
+ NIS_BIND_PATH=/var/yp/binding
+ 
+ #
++# tokencat <tag> <separator>
++#
++# Reads the input, picks out lines where first word is equal to "tag" and
++# appends the remainder of the line to output, separated by "separator" string.
++# Example: tokencat "nameserver" "," < /etc/resolv.conf
++#
++tokencat() {
++	V=""
++	if [ x"$1" = x ]; then
++		while read _1; do V="$V$_1$2"; done
++	else
++		[ -x "$NAWK" ] && { $NAWK '$1 == "'"$1"'" { printf "%s'"$2"'", $2 }' && return; }
++		while read _1 _2; do
++			case "$_1" in
++				"$1")	V="$V$_2$2" ;;
++			esac
++		done
++	fi
++	[ x"$V" != x ] && echo "$V"
++	# returns non-zero on empty results
++}
++
++#
++# tokenecho <tag>
++#
++# Reads the input, picks out lines where first word is equal to "tag" and
++# echoes the remainder of such line to output.
++#
++tokenecho() {
++	[ -x "$NAWK" ] && { $NAWK '$1 == "'"$1"'" { print $2 }' && return; }
++	while read _1 _2; do
++	    case "$_1" in
++		"$1")	echo "$_2" ;;
++	    esac
++	done
++}
++
++#
+ # copy_to_legacy_loc <file>
+ #
+ # Copies the file to the Legacy location directory
+@@ -174,12 +220,12 @@
+ 			DNS_NAMESERVICE_CONFIGSRC="dhcp"
+ 		else
+ 			DNS_NAMESERVICE_CONFIGSRC="manual"
+-			DNS_NAMESERVICE_DOMAIN=`$NAWK '$1 == "domain" {\
+-			    print $2 }' < /etc/resolv.conf`
+-			DNS_NAMESERVICE_SERVERS=`$NAWK '$1 == "nameserver" \
+-			    { printf "%s,", $2 }' < /etc/resolv.conf`
+-			DNS_NAMESERVICE_SEARCH=`$NAWK '$1 == "search" \
+-			    { printf "%s,", $2 }' < /etc/resolv.conf`
++			DNS_NAMESERVICE_DOMAIN=`tokenecho domain \
++				< /etc/resolv.conf`
++			DNS_NAMESERVICE_SERVERS=`tokencat nameserver , \
++				< /etc/resolv.conf`
++			DNS_NAMESERVICE_SEARCH=`tokencat search , \
++				< /etc/resolv.conf`
+ 			copy_to_legacy_loc /etc/resolv.conf
+ 		fi
+ 	fi
+@@ -190,14 +236,14 @@
+ 		NIS_NAMESERVICE_CONFIGSRC="manual"
+ 		DEFAULT_DOMAIN=`$CAT /etc/defaultdomain`
+ 
+-		yp_servers=`$NAWK '{ printf "%s ", $1 }' \
++		yp_servers=`tokencat "" " " \
+ 		    < $NIS_BIND_PATH/$DEFAULT_DOMAIN/ypservers`
+ 		for serv in $yp_servers; do
+ 			if is_valid_addr $serv; then
+ 				addr="$serv,"
+ 			else
+ 				addr=`$GREP -iw $serv /etc/inet/hosts | \
+-				    $NAWK '{ printf "%s,", $1 }'`
++				    tokencat "" " "`
+ 			fi
+ 			NIS_NAMESERVICE_SERVERS="${NIS_NAMESERVICE_SERVERS}$addr"
+ 		done
+@@ -209,7 +255,7 @@
+ 		NAMESERVICES="${NAMESERVICES}ldap,"
+ 		LDAP_NAMESERVICE_CONFIGSRC="manual"
+ 		LDAP_NAMESERVICE_SERVERS=`$LDAPCLIENT list 2>/dev/null | \
+-		    $NAWK '$1 == "preferredServerList:" { print $2 }'`
++		    tokenecho "preferredServerList:"`
+ 		DEFAULT_DOMAIN=`$CAT /etc/defaultdomain`
+ 	fi
+ 
+@@ -365,9 +411,17 @@
+ 			$MKDIR -p $NIS_BIND_PATH/$DEFAULT_DOMAIN
+ 		fi
+ 		if [ -n "$NIS_SERVERS" ]; then
+-			echo "$NIS_SERVERS" | $NAWK \
+-			    'FS="," { for (i = 1; i <= NF; i++) print $i }' \
+-			    > $NIS_BIND_PATH/$DEFAULT_DOMAIN/ypservers
++			if [ -x "$NAWK" ]; then
++			    echo "$NIS_SERVERS" | $NAWK \
++				'FS="," { for (i = 1; i <= NF; i++) print $i }'
++			else
++			    L="$NIS_SERVERS"
++			    while [ x"$L" != x ]; do
++				L=`IFS=, echo "$L" | { read _1 _2; \
++				    echo "$_1" >&2; echo "$_2"; }` 2>&1
++			    done
++			    unset L
++			fi > $NIS_BIND_PATH/$DEFAULT_DOMAIN/ypservers
+ 		fi
+ 		$SVCADM enable nis/client
+ 	fi
+@@ -421,7 +475,7 @@
+ 		# change /none, /allow, and /deny to firewall policy
+ 		if [ "$ipf_file" = "/none" -o "$ipf_file" = "/allow" \
+ 		    -o "$ipf_file" = "/deny" ]; then
+-			policy=`echo "$ipf_file" | $NAWK 'FS="/" { print $2 }'`
++			policy="${ipf_file//\//}"
+ 			set_smf_prop $IPFILTER_FMRI \
+ 			    firewall_config_default/policy $policy
+ 			# no need to clear custom_policy_file as it isn't "custom"
+--- /lib/svc/method/net-physical.orig-oi151a8	2013-07-21 16:35:53.000000000 +0200
++++ /lib/svc/method/net-physical	2013-11-26 19:55:04.811003487 +0100
+@@ -38,10 +38,13 @@
+ #
+ smf_configure_ip || exit $SMF_EXIT_OK
+ 
+-
+ # Make sure that the libraries essential to this stage of booting can be found.
+ LD_LIBRARY_PATH=/lib; export LD_LIBRARY_PATH
+ 
++# Even if the program is not found explicitly or as a builtin, use some
++# valid value in the variable, to have reasonable errors at least...
++[ -x /usr/bin/cut ] && CUT="/usr/bin/cut" || { CUT=cut; builtin cut; }
++
+ smf_netstrategy
+ 
+ if smf_is_globalzone; then
+@@ -314,9 +317,9 @@
+ # enforced on the interface by the global zone.
+ #
+ for showif_output in `/sbin/ipadm show-if -p -o ifname,state,current`; do
+-	intf=`echo $showif_output | /usr/bin/cut -f1 -d:`
+-	state=`echo $showif_output | /usr/bin/cut -f2 -d:`
+-	current=`echo $showif_output | /usr/bin/cut -f3 -d:`
++	intf=`echo $showif_output | $CUT -f1 -d:`
++	state=`echo $showif_output | $CUT -f2 -d:`
++	current=`echo $showif_output | $CUT -f3 -d:`
+ 	if  [[ "$state" != "disabled" && $current != *Z* ]]; then
+ 		#
+ 		# skip if not a persistent interface, or if it should get IP
+--- /lib/svc/method/fs-root.splitroot	2013-11-17 03:21:47.000000000 +0100
++++ /lib/svc/method/fs-root	2013-11-27 00:35:29.119717438 +0100
+@@ -26,6 +26,12 @@
+ # Make sure that the libraries essential to this stage of booting can be found.
+ LD_LIBRARY_PATH=/lib; export LD_LIBRARY_PATH
+ 
++NET_PHYS_FMRI="svc:/network/physical:default"
++NET_NWAM_FMRI="svc:/network/physical:nwam"
++NET_IPTUN_FMRI="svc:/network/iptun:default"
++SVCADM=/usr/sbin/svcadm
++SVCS=/usr/bin/svcs
++
+ libc_mount() {
+ 	#
+ 	# If there is an optimized libc available in /usr that fits this
+@@ -239,6 +245,19 @@
+ #
+ /usr/sbin/devfsadm -I -P
+ 
++#
++# After possibly finding new drivers, and after getting an /usr, redo network
++#
++for _SVC in $NET_PHYS_FMRI $NET_NWAM_FMRI $NET_IPTUN_FMRI; do
++	_STATE="`$SVCS -H -o state $_SVC`"
++	echo "$_SVC: $_STATE" > /dev/msglog
++	case "$_STATE" in
++	    online*)	$SVCADM restart $_SVC ;;
++	    maintenance)$SVCADM clear $_SVC ;;
++	esac
++done
++unset _SVC _STATE
++
+ libc_mount
+ 
+ exit $SMF_EXIT_OK

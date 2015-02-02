@@ -1,0 +1,243 @@
+--- /lib/svc/method/fs-minimal.orig-oi_151a8	2013-07-21 16:35:53.000000000 +0200
++++ /lib/svc/method/fs-minimal	2013-11-18 20:41:27.498150952 +0100
+@@ -31,6 +31,10 @@
+ . /lib/svc/share/smf_include.sh
+ . /lib/svc/share/fs_include.sh
+ 
++# Report selected mounts to /dev/msglog
++debug_mnt=0
++[ -f /.debug_mnt ] && debug_mnt=1
++
+ # Mount other file systems to be available in single user mode.
+ # Currently, these are /var, /var/adm, /var/run and /tmp.  A change
+ # here will require a modification to the following programs (and
+@@ -49,6 +53,7 @@
+ 	if [ -n "$mountp" ]; then
+ 		mounted $mountp $mntopts $fstype < /etc/mnttab && continue
+ 		checkfs $fsckdev $fstype $mountp || exit $SMF_EXIT_ERR_FATAL
++		[ x"$debug_mnt" = x1 ] && echo "Mounting '$fs': use '$mountp' of type '$fstype' with opts '$mntopts' from vfstab" > /dev/msglog
+ 		mountfs -O $mountp $fstype $mntopts - ||
+ 		    exit $SMF_EXIT_ERR_FATAL
+ 		continue
+@@ -57,10 +62,50 @@
+ 		mountpt=`zfs get -H -o value mountpoint $be$fs 2>/dev/null`
+ 		if [ $? = 0 ] ; then
+ 			if [ "x$mountpt" = "x$fs" ] ; then
++				[ x"$debug_mnt" = x1 ] && echo "Mounting '$fs': use '$be$fs': in same root hierarchy" > /dev/msglog
+ 				/sbin/zfs mount -O $be$fs
++				continue
+ 			fi
+ 		fi
+-	fi
++		# These mountpoints can be shared among BEs in a separate tree.
++		# Find and mount matching automountable datasets; if there is
++		# choice - prefer the (first found?) one in the current rpool.
++		mountdslist="`zfs list -H -o canmount,mountpoint,name | awk '( $1 == "on" && $2 == "'"$fs"'" ) {print $3}' 2>/dev/null`"
++		if [ $? = 0 -a "x$mountdslist" != x ] ; then
++			if [ "x`echo "$mountdslist"|wc -l|sed 's/ //g'`" = x1 ]; then
++				# We only had one hit
++				[ x"$debug_mnt" = x1 ] && echo "Mounting '$fs': use '$mountdslist': the only option" > /dev/msglog
++				/sbin/zfs mount -O "$mountdslist"
++				continue
++			else
++				rpoolname="`echo "$be" | awk -F/ '{print $1}'`"
++			        mountdspref="`echo "$mountdslist" | egrep '^'"$rpoolname/" | head -1`"
++				if [ $? = 0 -a "x$mountdspref" != x ] ; then
++					[ x"$debug_mnt" = x1 ] && echo "Mounting '$fs': use '$mountdspref': same rpool" > /dev/msglog
++					/sbin/zfs mount -O "$mountdspref"
++					continue
++				fi
++				# This is the least-definite situation: several
++			        # matching datasets exist, and none on the current
++				# rpool. See if any pools can be ruled out due to
++			        # bad (non-default) altroots.
++				for mountds in $mountdslist; do
++					dspool="`echo "$mountds" | awk -F/ '{print $1}'`"
++					dspool_altroot="`zpool list -H -o altroot "$dspool"`"
++					if [ $? = 0 -a \
++					     x"$dspool_altroot" = "x-" -o \
++					     x"$dspool_altroot" = "x/" ]; then
++						[ x"$debug_mnt" = x1 ] && echo "Mounting '$fs': use '$mountds': good altroot" > /dev/msglog
++					        /sbin/zfs mount -O "$mountds"
++						continue
++					fi
++				    done
++				fi
++		fi
++		# Technically, it is possible to have a pool named var with
++		# the default altroot and a dataset "var/adm" with an inherited
++		# mountpoint, which should automount into "/var/adm". TBD...
++	fi  ### if root is ZFS
+ done
+ 
+ mounted /var/run - tmpfs < /etc/mnttab
+@@ -73,11 +118,17 @@
+ fi
+ 
+ if [ "$rootiszfs" = 1 ] ; then
++	_SKIP=0
++	# Mount (other) possible children of current rootfs dataset
+ 	/sbin/zfs list -rH -o mountpoint -s mountpoint -t filesystem $be | \
+ 	    while read mountp ; do
++		# Skip the rootfs itself regardless of its mountpoint name
++		[ "$_SKIP" = 0 ] && _SKIP=1 && continue
++
+ 		if [ "x$mountp" != "x" -a "$mountp" != "legacy" ] ; then
+ 			mounted $mountp - zfs < /etc/mnttab  && continue
+-			/sbin/zfs mount $be$mountp
++			[ x"$debug_mnt" = x1 ] && echo "Mounting '$mountp': use '$be$mountp': in same root hierarchy" > /dev/msglog
++			/sbin/zfs mount -O "$be$mountp"
+ 		fi
+ 	done
+ fi
+--- /lib/svc/method/fs-root.orig-oi_151a8	2013-07-21 16:35:53.000000000 +0200
++++ /lib/svc/method/fs-root	2013-11-27 00:35:29.119717438 +0100
+@@ -26,6 +26,12 @@
+ # Make sure that the libraries essential to this stage of booting can be found.
+ LD_LIBRARY_PATH=/lib; export LD_LIBRARY_PATH
+ 
++NET_PHYS_FMRI="svc:/network/physical:default"
++NET_NWAM_FMRI="svc:/network/physical:nwam"
++NET_IPTUN_FMRI="svc:/network/iptun:default"
++SVCADM=/usr/sbin/svcadm
++SVCS=/usr/bin/svcs
++
+ libc_mount() {
+ 	#
+ 	# If there is an optimized libc available in /usr that fits this
+@@ -53,6 +59,10 @@
+ . /lib/svc/share/smf_include.sh
+ . /lib/svc/share/fs_include.sh
+ 
++# Report selected mounts to /dev/msglog
++debug_mnt=0
++[ -f /.debug_mnt ] && debug_mnt=1
++
+ #
+ # Most of the operations in this script are only necessary in the global
+ # zone but due to the way initialization scripts like this are packaged,
+@@ -136,6 +146,8 @@
+ 			fi
+ 		fi
+ 
++		[ x"$debug_mnt" = x1 ] && fs=/usr \
++			echo "Mounting '$fs': use '$mountp' of type '$fstype' with opts '$mntopts' from vfstab" > /dev/msglog
+ 		mountfs -O /usr $fstype $mntopts - || exit $SMF_EXIT_ERR_FATAL
+ 	fi
+ fi
+@@ -146,22 +158,73 @@
+ 
+ readmnttab "/" < /etc/mnttab
+ if [ "$fstype" = zfs ]; then
++	mountp_root=`/sbin/zfs get -H -o value mountpoint $special 2>/dev/null`
++	#
++	# Due to "beadm mount" or other mangling, current root fs may have
++	# a shifted mountpoint, i.e. "/a" with separated subdir datasets
++	# like usr becoming "/a/usr". We work around that below by trying
++	# to set the correct mountpoint upon boot.
++	#
++	if [ "x$mountp_root" != "x/" ]; then
++		[ x"$debug_mnt" = x1 ] && echo "Rootfs mountpoint not '/' but '$mountp_root', trying to fix." > /dev/msglog
++		/sbin/zfs set mountpoint=/ $special 2>/dev/null
++		# This might fail because rootds is busy... Might be cleaner
++		# on next boot. Now fix mountpoints of possible non-legacy
++		# non-inherited children of the current rootfs dataset:
++		/sbin/zfs list -rH -o name,mountpoint \
++		  -s mountpoint -t filesystem $special | \
++			while read child_ds child_mountp ; do
++				child_rel="${child_ds//$special/}"
++
++				# Skip the rootfs dataset; in comparisons also
++				# remember that $child_rel starts with a slash
++				[ x"$child_rel" != x -a x"$child_rel" != x"$special" ] && \
++				case "x$child_mountp" in
++				xlegacy)
++					[ x"$debug_mnt" = x1 ] && echo "NOTE: not fixing '$child_ds' to use '$child_rel' mountpoint: legacy mount" > /dev/msglog
++					;;
++				"x$mountp_root$child_rel"|"x/?$child_rel"|x/tmp/tmp.*"$child_rel"|"x/$child_rel")
++					[ x"$debug_mnt" = x1 ] && echo "Fixing '$child_ds' to use '$child_rel' mountpoint instead of '$child_mountp': in same root hierarchy" > /dev/msglog
++					/sbin/zfs set mountpoint="$child_rel" "$special$child_rel" 2>/dev/null
++					;;
++				"x$child_rel")
++					[ x"$debug_mnt" = x1 ] && echo "No need to fix '$child_ds' to use '$child_rel' mountpoint instead of '$child_mountp': in same root hierarchy" > /dev/msglog
++					;;
++				*)
++					[ x"$debug_mnt" = x1 ] && echo "NOTE: not fixing '$child_ds' to use '$child_rel' mountpoint instead of '$child_mountp': in same root hierarchy" > /dev/msglog
++					;;
++				esac
++			done
++	fi
++
+ 	mountp=`/sbin/zfs get -H -o value mountpoint $special/usr 2>/dev/null`
+ 	#
+ 	# if mountp = /usr, there is a non-legacy mount of /usr
+ 	# in the boot environment being booted.
+ 	#
+ 	if [ "x$mountp" = "x/usr" ] ; then
+-		/sbin/zfs mount $special/usr
+-		if [ $? != 0 ] ; then
++		DS="`readmnttab "/usr" < /etc/mnttab && echo "$special"`"
++		if [ "x$DS" != x -a "x$DS" = "x$special/usr" ]; then
++			[ x"$debug_mnt" = x1 ] && echo "Already mounted: '$mountp' from '$special$mountp': in same root hierarchy" > /dev/msglog
++		else
++			[ x"$debug_mnt" = x1 ] && echo "Mounting '$mountp': use '$special$mountp': in same root hierarchy" > /dev/msglog
++			/sbin/zfs mount -O $special/usr
++			if [ $? != 0 ] ; then
+ 				msg='zfs-mount failed'
+ 				echo $msg
+ 				echo "$SMF_FMRI:" $msg >/dev/msglog
+-		 	exit $SMF_EXIT_ERR_FATAL
++			 	exit $SMF_EXIT_ERR_FATAL
++			fi
+ 		fi
+ 	fi
+ fi
+ 
++if [ ! -d /usr/bin ]; then
++	echo "FATAL: /usr does not seem to be properly mounted!"
++	echo "FATAL: /usr does not seem to be properly mounted!" > /dev/msglog
++	exit $SMF_EXIT_ERR_FATAL
++fi
++
+ #
+ # Also mount /boot now so that things like keymap.sh can access
+ # boot properties through eeprom.  Readonly isn't required because
+@@ -182,6 +245,19 @@
+ #
+ /usr/sbin/devfsadm -I -P
+ 
++#
++# After possibly finding new drivers, and after getting an /usr, redo network
++#
++for _SVC in $NET_PHYS_FMRI $NET_NWAM_FMRI $NET_IPTUN_FMRI; do
++	_STATE="`$SVCS -H -o state $_SVC`"
++	echo "$_SVC: $_STATE" > /dev/msglog
++	case "$_STATE" in
++	    online*)	$SVCADM restart $_SVC ;;
++	    maintenance)$SVCADM clear $_SVC ;;
++	esac
++done
++unset _SVC _STATE
++
+ libc_mount
+ 
+ exit $SMF_EXIT_OK
+--- /lib/svc/method/fs-usr.orig-oi_151a8	2013-07-21 16:35:53.000000000 +0200
++++ /lib/svc/method/fs-usr	2013-11-18 20:41:27.322644738 +0100
+@@ -54,8 +54,14 @@
+ 	# If we have a dedicated dump device, then go ahead and configure it.
+ 	# 
+ 	if [ "x$special" != "x$DUMPADM_DEVICE" ]; then
+-		if [ -x /usr/sbin/dumpadm -a -b $DUMPADM_DEVICE ]; then
+-			/usr/sbin/dumpadm -u || exit $SMF_EXIT_ERR_CONFIG
++		if [ -x /usr/sbin/dumpadm ]; then
++			if [ -b $DUMPADM_DEVICE ]; then
++				/usr/sbin/dumpadm -u || \
++					exit $SMF_EXIT_ERR_CONFIG
++			fi
++		else
++			echo "WARN: /usr/sbin/dumpadm not found" >&2
++			return
+ 		fi
+ 	fi
+ }
