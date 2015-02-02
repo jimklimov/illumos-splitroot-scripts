@@ -1,3 +1,7 @@
+OBSOLETE United patch for the three filesystem methods to support split-rooting
+See http://wiki.openindiana.org/oi/Advanced+-+Split-root+installation
+Copyright (C) 2013 by Jim Klimov, License: MIT
+
 --- /lib/svc/method/fs-minimal.orig-oi_151a8	2013-07-21 16:35:53.000000000 +0200
 +++ /lib/svc/method/fs-minimal	2013-11-18 20:41:27.498150952 +0100
 @@ -31,6 +31,10 @@

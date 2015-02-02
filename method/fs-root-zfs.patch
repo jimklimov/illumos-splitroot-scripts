@@ -1,3 +1,7 @@
+United patch for the three filesystem methods to support split-rooting
+See http://wiki.openindiana.org/oi/Advanced+-+Split-root+installation
+Copyright (C) 2013-2015 by Jim Klimov, License: MIT
+
 --- /lib/svc/method/fs-root.orig-oi_151a8	2013-07-21 16:35:53.000000000 +0200
 +++ /lib/svc/method/fs-root	2013-11-30 04:16:23.733195299 +0100
 @@ -73,6 +73,7 @@
