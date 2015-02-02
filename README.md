@@ -9,6 +9,11 @@ ZFS root filesystem structure, where the OS image is spread over several
 datasets under a common root (which are automatically cloned with the
 common `beadm clone` facility, `pkg image-upgrade` and so on).
 
+However, more "correct" creation of BE clones (which would take into
+account re-application of the dataset attributes) and subsequently the
+installation of packaged updates is conveniently automated with scripts
+`beadm-clone.sh` and `beadm-upgrade.sh` included with this project.
+
 Note that while splitting off the `usr` filesystem into its own dataset
 with maximum compression is most beneficial, it is also most problematic
 in modern default distributions (OpenIndiana Dev and Hipster, OmniOS)
