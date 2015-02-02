@@ -5,7 +5,7 @@
 ### Parameters are passed from ENV VARS (no CLI so far).
 ### Assumes BE's hosted in ZFS, minimal checking enabled for auto-guesses.
 ### Based on http://wiki.openindiana.org/oi/Advanced+-+Split-root+installation
-### Copyright (C) 2013-2014 by Jim Klimov, License: MIT
+### Copyright (C) 2013-2014 by Jim Klimov, License: CDDL
 
 # First of all, just set missing environment variables
 CURRENT_BE="`beadm list -H | while IFS=";" read BENAME BEGUID BEACT BEMPT BESPACE BEPOLICY BESTAMP; do case "$BEACT" in *N*) echo $BENAME;; esac; done`"

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 ### Run package upgrades in a new BE (created by a call to beadm-clone.sh)
-### Copyright (C) 2014-2015 by Jim Klimov, License: MIT
+### Copyright (C) 2014-2015 by Jim Klimov, License: CDDL
 ### See also: http://wiki.openindiana.org/oi/Advanced+-+Split-root+installation
 
 [ ! -s "`dirname $0`/beadm-clone.sh" ] && \
