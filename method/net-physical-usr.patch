@@ -2,7 +2,7 @@ These OPTIONAL fixes should untie networking from split-off /usr as much
 as possible. May be not even needed at all with proper setup of split-root
 (the rootfs structure should then get mounted before any networking kicks in).
 See http://wiki.openindiana.org/oi/Advanced+-+Split-root+installation
-Copyright (C) 2013 by Jim Klimov, License: MIT
+Copyright (C) 2013 by Jim Klimov, License: CDDL
 
 --- /lib/svc/method/net-iptun.orig-oi151a8	2013-07-21 16:35:53.000000000 +0200
 +++ /lib/svc/method/net-iptun	2013-11-27 00:47:30.900872107 +0100
