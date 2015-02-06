@@ -69,9 +69,9 @@ beadm_clone_whatnext() {
     cat << EOF
 
 === To upgrade from upstream do:
-pkg -R "$BENEW_MNT" image-update --deny-new-be --no-backup-be
-touch "$BENEW_MNT/reconfigure"
-bootadm update-archive -R "$BENEW_MNT"
+pkg -R "$BENEW_MNT" image-update --deny-new-be --no-backup-be && \
+touch "$BENEW_MNT/reconfigure" && \
+bootadm update-archive -R "$BENEW_MNT" && \
 beadm umount "$BENEW"
 
 TS="\`date -u "+%Y%m%dZ%H%M%S"\`"
