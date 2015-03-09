@@ -22,7 +22,7 @@ CURRENT_RPOOL="`grep -w / /etc/mnttab | grep -w zfs | sed 's,^\([^\/]*\)/.*,\1,'
 [ x"$RPOOL_SHARED" = x ] && RPOOL_SHARED="$RPOOL/SHARED"
 
 [ x"$RPOOLALT" = x ] && \
-    RPOOLALT="`zpool get -Hp altroot "$RPOOL" | awk '{print $3}'`"
+    RPOOLALT="`zpool get altroot "$RPOOL" | tail -1 | awk '{print $3}'`"
 [ x"$RPOOLALT" = x- ] && RPOOLALT=""
 
 [ x"$BEOLD_MPT" = x ] && \
