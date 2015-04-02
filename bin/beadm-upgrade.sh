@@ -131,8 +131,10 @@ do_clone_umount() {
 
 do_upgrade_pkgips() {
     ### Note that IPS pkg command does not work under a simple chroot
+    ### but has proper altroot support instead
     if [ -x /usr/bin/pkg ]; then
 	echo "=== Run IPS pkg upgrade..."
+	/usr/bin/pkg -R "$BENEW_MNT" update --accept --licenses --deny-new-be --no-backup-be pkg
 	/usr/bin/pkg -R "$BENEW_MNT" image-update --accept --licenses --deny-new-be --no-backup-be
 	RES_PKGIPS=$?
 	TS="`date -u "+%Y%m%dZ%H%M%S"`" && \
@@ -144,8 +146,12 @@ do_upgrade_pkgips() {
 do_upgrade_pkgsrc() {
     if [ -x "$BENEW_MNT"/opt/local/bin/pkgin ]; then
 	echo "=== Run PKGSRC upgrade..."
+	chroot "$BENEW_MNT" /opt/local/bin/pkgin update
+	RES_PKGSRC=$?
 	yes | chroot "$BENEW_MNT" /opt/local/bin/pkgin full-upgrade
 	RES_PKGSRC=$?
+#	echo "===== Run PKGSRC orphan autoremoval..."
+#	chroot "$BENEW_MNT" /opt/local/bin/pkgin autoremove || RES_PKGSRC=$?
 	TS="`date -u "+%Y%m%dZ%H%M%S"`" && \
 	    zfs snapshot -r "$RPOOL_SHARED@postupgrade_pkgsrc-$TS" && \
 	    zfs snapshot -r "$BENEW_DS@postupgrade_pkgsrc-$TS"
@@ -189,7 +195,6 @@ do_upgrade() {
 }
 
 trap "BREAKOUT=y; exit 127;" 1 2 3 15
-
 
 case "`basename $0`" in
     *upgrade*)
