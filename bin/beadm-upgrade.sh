@@ -102,7 +102,7 @@ do_clone_mount() {
 	echo "FATAL: Could not mount $BENEW at $BENEW_MNT"
 
     # Now, ensure that shared sub-datasets (if any) are also lofs-mounted
-    for _SMT in /tmp \
+    for _SMT in /tmp /proc \
 	`/bin/df -k | awk '( $1 ~ "^'"$RPOOL_SHARED"'" ) { print $NF }'` \
     ; do
 	echo "===== lofs-mount '$_SMT' at '$BENEW_MNT$_SMT'"
