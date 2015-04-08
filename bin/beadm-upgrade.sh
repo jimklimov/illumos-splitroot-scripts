@@ -28,14 +28,15 @@ trap_exit_upgrade() {
 
     if [ $RES_EXIT = 0 -a $BREAKOUT = n -a \
         $RES_PKGIPS -le 0 -a $RES_PKGSRC -le 0 -a $RES_BOOTADM -le 0 ] ; then
-        echo "=== SUCCESS, you can now do:  beadm activate $BENEW" >&2
+        echo "=== SUCCESS, you can now do:" >&2
+        echo "  beadm activate $BENEW   && init 6" >&2
         exit 0
     fi
 
     [ $RES_EXIT = 0 ] && RES_EXIT=126
     echo "=== FAILED, the upgrade was not completed successfully" \
-    	    "or found no new updates; you can remove the new BE with:" \
-    	    " beadm destroy -Ffsv $BENEW " >&2
+    	    "or found no new updates; you can remove the new BE with:" >&2
+    echo "	beadm destroy -Ffsv $BENEW " >&2
     exit $RES_EXIT
 }
 
@@ -78,6 +79,13 @@ do_clone_mount() {
     # This routine ensures that variables have been set and altroot is mounted
     # Note that we also support package upgrades in an existing (alt)root
 
+    [ -z "$BENEW" -o -z "$BENEW_MNT" -o -z "$BENEW_DS" -o -z "$RPOOL_SHARED" ] && \
+        echo "ERROR: do_clone_mount(): BENEW or BENEW_MNT or BENEW_DS or RPOOL_SHARED is not set" && \
+        return 1
+
+    echo "INFO: Unmounting any previous traces (if any - may fail), just in case"
+    do_clone_umount
+
     if [ -n "$BENEW_MNT" -a -n "$BENEW_DS" -a -n "$BENEW" ]; then
 	_MPT="`/bin/df -Fzfs -k "$BENEW_MNT" | awk '{print $1}' | grep "$BENEW_DS"`"
 	if [ x"$_MPT" != x"$BENEW_DS" -o -z "$_MPT" ]; then
@@ -116,6 +124,10 @@ do_clone_mount() {
 do_clone_umount() {
     # This routine ensures altroot is unmounted
 
+    [ -z "$BENEW" -o -z "$BENEW_MNT" ] && \
+        echo "ERROR: do_clone_umount(): BENEW or BENEW_MNT is not set" && \
+        return 1
+
     echo "=== Unmounting BE $BENEW under '$BENEW_MNT'..."
 
     /bin/df -k -F lofs | \
@@ -126,15 +138,19 @@ do_clone_umount() {
 	done
 
     echo "===== beadm-unmounting $BENEW ($BENEW_MNT)..."
-    beadm umount "$BENEW_MNT"
+    beadm umount "$BENEW_MNT" || \
+    beadm umount "$BENEW"
 }
 
 do_upgrade_pkgips() {
     ### Note that IPS pkg command does not work under a simple chroot
     ### but has proper altroot support instead
     if [ -x /usr/bin/pkg ]; then
-	echo "=== Run IPS pkg upgrade..."
-	/usr/bin/pkg -R "$BENEW_MNT" update --accept --licenses --deny-new-be --no-backup-be pkg
+	echo "=== Run IPS pkg upgrade (refresh package list, update pkg itself, update others)..."
+	/usr/bin/pkg -R "$BENEW_MNT" publisher
+	/usr/bin/pkg -R "$BENEW_MNT" refresh && \
+	/usr/bin/pkg -R "$BENEW_MNT" update --no-refresh --accept --licenses --deny-new-be --no-backup-be pkg && \
+	/usr/bin/pkg -R "$BENEW_MNT" image-update --no-refresh --accept --licenses --deny-new-be --no-backup-be || \
 	/usr/bin/pkg -R "$BENEW_MNT" image-update --accept --licenses --deny-new-be --no-backup-be
 	RES_PKGIPS=$?
 	TS="`date -u "+%Y%m%dZ%H%M%S"`" && \
@@ -204,7 +220,6 @@ case "`basename $0`" in
 		    echo "FATAL: BENEW not defined, nothing to unmount" && \
 		    exit 1
 		trap 'trap_exit_mount $?' 0
-		# As of now, this "curiously" tries to mount the BE first... ;)
 		do_ensure_configs
 		do_clone_umount ;;
     *mount*)	[ -z "$BENEW" ] && \
