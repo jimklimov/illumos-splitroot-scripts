@@ -155,13 +155,13 @@ do_upgrade_pkgips() {
 	{ echo "===== Refreshing IPS package list"
           /usr/bin/pkg -R "$BENEW_MNT" refresh; } && \
 	{ echo "===== Updating PKG software itself"
-          /usr/bin/pkg -R "$BENEW_MNT" update --no-refresh --accept --licenses --deny-new-be --no-backup-be pkg || true; } && \
+          /usr/bin/pkg -R "$BENEW_MNT" update --no-refresh --accept --deny-new-be --no-backup-be pkg || true; } && \
 	{ echo "===== Updating the image with new PKG software via chroot"
-          chroot "$BENEW_MNT" /usr/bin/pkg image-update --no-refresh --accept --licenses --deny-new-be --no-backup-be; } || \
+          chroot "$BENEW_MNT" /usr/bin/pkg image-update --no-refresh --accept --deny-new-be --no-backup-be; } || \
 	{ echo "===== Updating the image with old PKG software via altroot"
-          /usr/bin/pkg -R "$BENEW_MNT" image-update --no-refresh --accept --licenses --deny-new-be --no-backup-be; } || \
+          /usr/bin/pkg -R "$BENEW_MNT" image-update --no-refresh --accept --deny-new-be --no-backup-be; } || \
 	{ echo "===== Updating the image with old PKG software via altroot and allowed refresh"
-          /usr/bin/pkg -R "$BENEW_MNT" image-update --accept --licenses --deny-new-be --no-backup-be; }
+          /usr/bin/pkg -R "$BENEW_MNT" image-update --accept --deny-new-be --no-backup-be; }
 	RES_PKGIPS=$?
 
         echo "===== Querying the version of osnet-incorporation for '$BENEW' in '$BENEW_MNT'"
