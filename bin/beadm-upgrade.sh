@@ -110,13 +110,14 @@ do_clone_mount() {
 	echo "FATAL: Could not mount $BENEW at $BENEW_MNT"
 
     # Now, ensure that shared sub-datasets (if any) are also lofs-mounted
-    for _SMT in /tmp /proc \
+    # /proc is needed for pkgsrc dependencies (some getexecname() fails otherwise)
+    # /dev/urandom is needed for pkgips python scripts
+    for _SMT in /tmp /proc /dev /devices \
 	`/bin/df -k | awk '( $1 ~ "^'"$RPOOL_SHARED"'" ) { print $NF }'` \
     ; do
 	echo "===== lofs-mount '$_SMT' at '$BENEW_MNT$_SMT'"
 	mount -F lofs -o rw "$_SMT" "$BENEW_MNT$_SMT"
     done
-
 
     return 0
 }
@@ -147,12 +148,25 @@ do_upgrade_pkgips() {
     ### but has proper altroot support instead
     if [ -x /usr/bin/pkg ]; then
 	echo "=== Run IPS pkg upgrade (refresh package list, update pkg itself, update others)..."
+
+        echo "===== Querying the configured IPS publishers for '$BENEW' in '$BENEW_MNT'"
 	/usr/bin/pkg -R "$BENEW_MNT" publisher
-	/usr/bin/pkg -R "$BENEW_MNT" refresh && \
-	/usr/bin/pkg -R "$BENEW_MNT" update --no-refresh --accept --licenses --deny-new-be --no-backup-be pkg && \
-	/usr/bin/pkg -R "$BENEW_MNT" image-update --no-refresh --accept --licenses --deny-new-be --no-backup-be || \
-	/usr/bin/pkg -R "$BENEW_MNT" image-update --accept --licenses --deny-new-be --no-backup-be
+
+	{ echo "===== Refreshing IPS package list"
+          /usr/bin/pkg -R "$BENEW_MNT" refresh; } && \
+	{ echo "===== Updating PKG software itself"
+          /usr/bin/pkg -R "$BENEW_MNT" update --no-refresh --accept --licenses --deny-new-be --no-backup-be pkg || true; } && \
+	{ echo "===== Updating the image with new PKG software via chroot"
+          chroot "$BENEW_MNT" /usr/bin/pkg image-update --no-refresh --accept --licenses --deny-new-be --no-backup-be; } || \
+	{ echo "===== Updating the image with old PKG software via altroot"
+          /usr/bin/pkg -R "$BENEW_MNT" image-update --no-refresh --accept --licenses --deny-new-be --no-backup-be; } || \
+	{ echo "===== Updating the image with old PKG software via altroot and allowed refresh"
+          /usr/bin/pkg -R "$BENEW_MNT" image-update --accept --licenses --deny-new-be --no-backup-be; }
 	RES_PKGIPS=$?
+
+        echo "===== Querying the version of osnet-incorporation for '$BENEW' in '$BENEW_MNT'"
+        /usr/bin/pkg -R "$BENEW_MNT" info osnet-incorporation
+
 	TS="`date -u "+%Y%m%dZ%H%M%S"`" && \
 	    zfs snapshot -r "$RPOOL_SHARED@postupgrade_pkgips-$TS" && \
 	    zfs snapshot -r "$BENEW_DS@postupgrade_pkgips-$TS"
@@ -189,6 +203,9 @@ do_upgrade() {
     echo ""
     echo "======================== `date` ==================="
     echo "=== Beginning package upgrades in the '$BENEW' image mounted at '$BENEW_MNT'..."
+
+    echo "===== Querying the current HTTP proxy settings (if any) as may impact PKG downloads"
+    set | egrep '^(http|ftp)s?_proxy='
 
     echo ""
     do_upgrade_pkgips
