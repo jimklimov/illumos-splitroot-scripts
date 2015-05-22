@@ -29,7 +29,7 @@ trap_exit_upgrade() {
     if [ $RES_EXIT = 0 -a $BREAKOUT = n -a \
         $RES_PKGIPS -le 0 -a $RES_PKGSRC -le 0 -a $RES_BOOTADM -le 0 ] ; then
         echo "=== SUCCESS, you can now do:" >&2
-        echo "  beadm activate $BENEW   && init 6" >&2
+        echo "  beadm activate $BENEW    && init 6" >&2
         exit 0
     fi
 
@@ -155,16 +155,20 @@ do_upgrade_pkgips() {
 	{ echo "===== Refreshing IPS package list"
           /usr/bin/pkg -R "$BENEW_MNT" refresh; } && \
 	{ echo "===== Updating PKG software itself"
-          /usr/bin/pkg -R "$BENEW_MNT" update --no-refresh --accept --deny-new-be --no-backup-be pkg || true; } && \
-	{ echo "===== Updating the image with new PKG software via chroot"
-          chroot "$BENEW_MNT" /usr/bin/pkg image-update --no-refresh --accept --deny-new-be --no-backup-be; } || \
+          ### This clause should fail if no 'pkg' updates were available, or if a
+          ### chrooted upgrade attempt with the new 'pkg' failed - both ways fall
+          ### through to altroot upgrade attempt
+          if /usr/bin/pkg -R "$BENEW_MNT" update --no-refresh --accept --deny-new-be --no-backup-be pkg; then \
+            echo "===== Updating the image with new PKG software via chroot"
+            chroot "$BENEW_MNT" /usr/bin/pkg -R / image-update --no-refresh --accept --deny-new-be --no-backup-be
+          else false; fi; } || \
 	{ echo "===== Updating the image with old PKG software via altroot"
           /usr/bin/pkg -R "$BENEW_MNT" image-update --no-refresh --accept --deny-new-be --no-backup-be; } || \
 	{ echo "===== Updating the image with old PKG software via altroot and allowed refresh"
           /usr/bin/pkg -R "$BENEW_MNT" image-update --accept --deny-new-be --no-backup-be; }
 	RES_PKGIPS=$?
 
-        echo "===== Querying the version of osnet-incorporation for '$BENEW' in '$BENEW_MNT'"
+        echo "===== Querying the version of osnet-incorporation for '$BENEW' in '$BENEW_MNT' (FYI)"
         /usr/bin/pkg -R "$BENEW_MNT" info osnet-incorporation
 
 	TS="`date -u "+%Y%m%dZ%H%M%S"`" && \
