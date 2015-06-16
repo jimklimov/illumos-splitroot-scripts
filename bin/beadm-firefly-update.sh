@@ -9,7 +9,7 @@
 ### but it is likely that some time in the future this split-root project's
 ### common variables BENEW and BEOLD will refer to "production OS" BEs.
 ### Then there will be a way to produce a Firefly BE tailored to the newly
-### upgraded OS version.
+### upgraded OS version. Otherwise this script is quite autonomous by itself.
 ### Another related venue of research is to keep the Firefly archive image in
 ### the current BE (along with its version of the "unix" binary) so booting
 ### into the recovery mode is just a matter of attaching another "module$".
@@ -52,6 +52,8 @@ uuid() {
         FIREFLY_ISO="`ls -1 $FIREFLY_ISO`" && \
         [ -s "$FIREFLY_ISO" ] \
         || die "No FIREFLY_ISO found"
+### TODO[1]: When integrating with common BENEW/BEOLD and storing "firefly"
+### archives in-place, using a separate FIREFLY_BEOLD is optional (flag?)
 [ -z "$FIREFLY_BEOLD" ] && \
         FIREFLY_BEOLD="`basename "$FIREFLY_ISO" .iso`"
 [ $? = 0 -a -n "$FIREFLY_BEOLD" ] || die "No FIREFLY_BEOLD found"
@@ -94,10 +96,11 @@ if [ -z "$GRUB_MENU" ]; then
 fi
 
 ### Seed the initial image, if needed
+### TODO: See TODO[1] above
 if ! beadm list "$FIREFLY_BEOLD" ; then
         zfs create \
             -o mountpoint="$FIREFLY_BEOLD_MPT" -o canmount=noauto \
-            $RPOOL_ROOT/"$FIREFLY_BEOLD" && \
+            "$RPOOL_ROOT/$FIREFLY_BEOLD" && \
         zfs mount "$RPOOL_ROOT/$FIREFLY_BEOLD" && \
         ( cd "$RPOOLALT$FIREFLY_BEOLD_MPT" && 7z x "$DOWNLOADDIR/$FIREFLY_BEOLD.iso" ) \
         || die "Could not seed baseline Firefly dataset FIREFLY_BEOLD='$FIREFLY_BEOLD'"
@@ -122,27 +125,22 @@ module /platform/i86pc/amd64/firefly
         fi
 fi
 
-### Clone and mount the new FF dataset to refresh the image from Current BE
-if beadm list "$FIREFLY_BENEW" ; then
-        die "A Firefly dataset FIREFLY_BENEW='$FIREFLY_BENEW' already exists" \
-            "If you do intend to replace its contents - kill it yourself with" \
-            "  beadm destoy -Ffsv $FIREFLY_BENEW"
-else
-        beadm create \
-            -d "FireFly FailSafe Recovery $FIREFLY_BENEW (auto-updated from $FIREFLY_BEOLD) amd64" \
-            -e "$FIREFLY_BEOLD" "$FIREFLY_BENEW" \
-        || die "Could not clone new Firefly dataset FIREFLY_BENEW='$FIREFLY_BENEW'"
-fi
-beadm mount "$FIREFLY_BENEW" "$FIREFLY_BENEW_MPT"
+### Mount the baseline image BE
+### TODO: See TODO[1] above
+beadm mount "$FIREFLY_BEOLD" "$FIREFLY_BEOLD_MPT" \
+|| die "Can not mount FIREFLY_BEOLD='$FIREFLY_BEOLD'"
 [ $? = 0 -o $? = 180 ] \
-        || die "Could not mount FIREFLY_BENEW='$FIREFLY_BENEW' to FIREFLY_BENEW_MPT='$FIREFLY_BENEW_MPT'"
-[ -d "$FIREFLY_BENEW_MPT" ] && ( cd "$FIREFLY_BENEW_MPT" ) \
-        || die "Could not use FIREFLY_BENEW_MPT='$FIREFLY_BENEW_MPT'"
+        || die "Could not mount FIREFLY_BEOLD='$FIREFLY_BEOLD' to FIREFLY_BEOLD_MPT='$FIREFLY_BEOLD_MPT'"
+[ -d "$FIREFLY_BEOLD_MPT" ] && ( cd "$FIREFLY_BEOLD_MPT" ) \
+        || die "Could not use FIREFLY_BEOLD_MPT='$FIREFLY_BEOLD_MPT'"
 
 ### Prepare a copy of the Firefly image for modifications
-gzcat "$FIREFLY_BENEW_MPT"/platform/i86pc/amd64/firefly > "$FFARCH_FILE" \
+mkdir -p "`dirname "$FFARCH_FILE"`" "$FFARCH_MPT"
+gzcat "$FIREFLY_BEOLD_MPT"/platform/i86pc/amd64/firefly > "$FFARCH_FILE" \
         || die "Could not unpack Firefly image file"
-mkdir -p "$FFARCH_MPT"
+
+beadm umount "$FIREFLY_BEOLD"
+
 mount -F ufs "`lofiadm -a "$FFARCH_FILE"`" "$FFARCH_MPT" \
         || die "Could not mount the temporary Firefly image file"
 
@@ -175,12 +173,41 @@ done
         ./update-kernel.sh \
 ) || die "Could not update kernel bits in the temporary Firefly image file"
 
-### Clean up...
+### Initial clean-up after temporary-image update...
 umount "$FFARCH_MPT" && \
 lofiadm -d "$FFARCH_FILE" && \
 rm -rf "$FFARCH_MPT" \
 || die "Could not clean up the temporary Firefly image mountpoint"
 
+echo "Recompressing the updated Firefly image file..."
+FFARCH_FILE_COMPRESSED="`dirname "$FFARCH_FILE"`/firefly.$$"
+gzip -c -9 < "$FFARCH_FILE" > "$FFARCH_FILE_COMPRESSED" \
+        || die "Could not recompress the Firefly image file"
+
+### Store the image file into a BE
+### TODO[2]: When integrating with common BENEW/BEOLD and storing "firefly"
+### archives in-place, implement a flag to store in-place and update menu.lst
+### instead of making a new BE... end-users may want both options, their choice
+echo "Clone and mount the new FireFly Failsafe BE dataset..."
+if beadm list "$FIREFLY_BENEW" ; then
+        die "A Firefly dataset FIREFLY_BENEW='$FIREFLY_BENEW' already exists" \
+            "If you do intend to replace its contents - kill it yourself with" \
+            "  beadm destoy -Ffsv $FIREFLY_BENEW"
+else
+        ### NOTE: "beadm create" properly clones the boot-menu block
+        beadm create \
+            -d "FireFly FailSafe Recovery $FIREFLY_BENEW (auto-updated from $FIREFLY_BEOLD) amd64" \
+            -e "$FIREFLY_BEOLD" "$FIREFLY_BENEW" \
+        || die "Could not clone new Firefly dataset FIREFLY_BENEW='$FIREFLY_BENEW'"
+fi
+
+beadm mount "$FIREFLY_BENEW" "$FIREFLY_BENEW_MPT"
+[ $? = 0 -o $? = 180 ] \
+        || die "Could not mount FIREFLY_BENEW='$FIREFLY_BENEW' to FIREFLY_BENEW_MPT='$FIREFLY_BENEW_MPT'"
+[ -d "$FIREFLY_BENEW_MPT" ] && ( cd "$FIREFLY_BENEW_MPT" ) \
+        || die "Could not use FIREFLY_BENEW_MPT='$FIREFLY_BENEW_MPT'"
+
+echo "Copying updated files into new FireFly Failsafe BE dataset..."
 ### Note that i386 32-bit kernels are not supported by current Firefly
 cp -pf /platform/i86pc/kernel/amd64/unix \
         "$FIREFLY_BENEW_MPT"/platform/i86pc/kernel/amd64/unix \
@@ -188,10 +215,9 @@ cp -pf /platform/i86pc/kernel/amd64/unix \
 cp -pf /platform/i86pc/kernel/kmdb/amd64/unix \
         "$FIREFLY_BENEW_MPT"/platform/i86pc/kernel/kmdb/amd64/unix \
         || die
-
-echo "Recompressing the updated Firefly image file..."
-gzip -c -9 < "$FFARCH_FILE" > "$FIREFLY_BENEW_MPT"/platform/i86pc/amd64/firefly \
-        || die "Could not recompress the Firefly image file"
+cp -pf "$FFARCH_FILE_COMPRESSED" \
+        "$FIREFLY_BENEW_MPT"/platform/i86pc/amd64/firefly \
+        || die
 
 beadm umount "$FIREFLY_BENEW_MPT" && \
 rm -f "$FFARCH_FILE" || \
