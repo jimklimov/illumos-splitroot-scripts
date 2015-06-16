@@ -17,8 +17,8 @@
 die () {
         echo "" >&2
         while [ $# != 0 ]; do echo "$1"; shift; done >&2
-	echo "FATAL ERROR occurred, bailing out (see details above, clean up accordingly" >&2
-	exit 1
+        echo "FATAL ERROR occurred, bailing out (see details above, clean up accordingly" >&2
+        exit 1
 }
 
 ### Pre-requisite: Download the Firefly ISO image from SourceForge project
@@ -54,14 +54,30 @@ CURRENT_BE="`beadm list -H | while IFS=";" read BENAME BEGUID BEACT BEMPT BESPAC
 [ -z "$FFARCH_MPT" ] && FFARCH_MPT="/tmp/ff-$BEOLD.img-mpt"
 [ -z "$FFARCH_FILE" ] && FFARCH_FILE="/tmp/ff-$BEOLD.img"
 
+if [ -z "$GRUB_MENU" ]; then
+        GRUB_MENU="`LANG=C bootadm list-menu | grep 'the location for the active GRUB menu is' | awk '{print $NF}'`"
+        [ $? = 0 ] && [ -n "$GRUB_MENU" ] \
+        || GRUB_MENU=/rpool/boot/grub/menu.lst
+fi
+
 ### Seed the initial image, if needed
 if ! beadm list "$BEOLD" ; then
-        beadm create \
-            -d "FireFly FailSafe Recovery $BEOLD (from ISO)" "$BEOLD" && \
-        beadm mount "$BEOLD" "$BEOLD_MPT" && \
+        zfs create \
+            -o mountpoint="$BEOLD_MPT" -o canmount=noauto \
+            rpool/ROOT/"$BEOLD" && \
+        zfs mount "rpool/ROOT/$BEOLD" && \
         ( cd "$BEOLD_MPT" && 7z x "$DOWNLOADDIR/$BEOLD.iso" ) \
         || die "Could not seed baseline Firefly dataset BEOLD='$BEOLD'"
-        beadm umount "$BEOLD"
+        zfs umount "rpool/ROOT/$BEOLD"
+
+        if [ -s "$GRUB_MENU" ] && ! egrep "^bootfs rpool/ROOT/$BEOLD\$" "$GRUB_MENU"; then
+            echo "Adding GRUB menu entry to use and to clone with 'beadm -e' later"
+            echo "title FireFly FailSafe Recovery $BEOLD (from ISO) amd64
+bootfs rpool/ROOT/$BEOLD
+kernel /platform/i86pc/kernel/amd64/unix
+module /platform/i86pc/amd64/firefly
+#============ End of LIBBE entry =============" >> "$GRUB_MENU"
+        fi
 fi
 
 ### Clone and mount the new FF dataset to refresh the image from Current BE
