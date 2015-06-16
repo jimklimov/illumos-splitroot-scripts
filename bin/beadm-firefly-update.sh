@@ -45,6 +45,17 @@ die () {
 CURRENT_BE="`beadm list -H | while IFS=";" read BENAME BEGUID BEACT BEMPT BESPACE BEPOLICY BESTAMP; do case "$BEACT" in *N*) echo "$BENAME";; esac; done`" \
         || die "No CURRENT_BE found"
 
+### How to refer to the rpool we are mangling (current or different)?
+CURRENT_RPOOL="`grep -w / /etc/mnttab | grep -w zfs | sed 's,^\([^\/]*\)/.*,\1,'`" \
+        || CURRENT_RPOOL=""
+[ x"$RPOOL" = x ] && RPOOL="$CURRENT_RPOOL"
+[ x"$RPOOL" = x ] && RPOOL="rpool"
+[ x"$RPOOL_ROOT" = x ] && RPOOL_ROOT="$RPOOL/ROOT"
+
+[ x"$RPOOLALT" = x ] && \
+        RPOOLALT="`zpool get altroot "$RPOOL" | tail -1 | awk '{print $3}'`"
+        [ x"$RPOOLALT" = x- ] && RPOOLALT=""
+
 ### The new Firefly BE to be updated with files from FIREFLY_BEOLD
 [ -z "$FIREFLY_BENEW" ] && FIREFLY_BENEW="${FIREFLY_BEOLD}-${CURRENT_BE}"
 
@@ -56,28 +67,33 @@ CURRENT_BE="`beadm list -H | while IFS=";" read BENAME BEGUID BEACT BEMPT BESPAC
 [ -z "$FFARCH_FILE" ] && FFARCH_FILE="/tmp/ff-$FIREFLY_BEOLD.img"
 
 if [ -z "$GRUB_MENU" ]; then
-        GRUB_MENU="`LANG=C bootadm list-menu | grep 'the location for the active GRUB menu is' | awk '{print $NF}'`"
+	[ -z "$RPOOLALT" ] && \
+	    ALTROOT_ARG="" || \
+	    ALTROOT_ARG="-R $RPOOLALT"
+        GRUB_MENU="`LANG=C bootadm list-menu $ALTROOT_ARG | grep 'the location for the active GRUB menu is' | awk '{print $NF}'`"
         [ $? = 0 ] && [ -n "$GRUB_MENU" ] \
-        || GRUB_MENU=/rpool/boot/grub/menu.lst
+        || GRUB_MENU="$RPOOLALT/rpool/boot/grub/menu.lst"
 fi
 
 ### Seed the initial image, if needed
 if ! beadm list "$FIREFLY_BEOLD" ; then
         zfs create \
             -o mountpoint="$FIREFLY_BEOLD_MPT" -o canmount=noauto \
-            rpool/ROOT/"$FIREFLY_BEOLD" && \
-        zfs mount "rpool/ROOT/$FIREFLY_BEOLD" && \
-        ( cd "$FIREFLY_BEOLD_MPT" && 7z x "$DOWNLOADDIR/$FIREFLY_BEOLD.iso" ) \
+            $RPOOL_ROOT/"$FIREFLY_BEOLD" && \
+        zfs mount "$RPOOL_ROOT/$FIREFLY_BEOLD" && \
+        ( cd "$RPOOLALT$FIREFLY_BEOLD_MPT" && 7z x "$DOWNLOADDIR/$FIREFLY_BEOLD.iso" ) \
         || die "Could not seed baseline Firefly dataset FIREFLY_BEOLD='$FIREFLY_BEOLD'"
-        zfs umount "rpool/ROOT/$FIREFLY_BEOLD"
+        zfs umount "$RPOOL_ROOT/$FIREFLY_BEOLD"
 
-        if [ -s "$GRUB_MENU" ] && ! egrep "^bootfs rpool/ROOT/$FIREFLY_BEOLD\$" "$GRUB_MENU"; then
-            echo "Adding GRUB menu entry to use and to clone with 'beadm -e' later"
+        if [ -s "$GRUB_MENU" ] && ! egrep "^bootfs $RPOOL_ROOT/$FIREFLY_BEOLD\$" "$GRUB_MENU"; then
+            echo "Adding GRUB menu entry to use and to clone with 'beadm -e' later into '$GRUB_MENU'"
             echo "title FireFly FailSafe Recovery $FIREFLY_BEOLD (from ISO) amd64
-bootfs rpool/ROOT/$FIREFLY_BEOLD
+bootfs $RPOOL_ROOT/$FIREFLY_BEOLD
 kernel /platform/i86pc/kernel/amd64/unix
 module /platform/i86pc/amd64/firefly
 #============ End of LIBBE entry =============" >> "$GRUB_MENU"
+	else
+	    echo "WARNING: Grub menu file not found at '$GRUB_MENU'"
         fi
 fi
 
