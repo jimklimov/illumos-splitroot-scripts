@@ -22,6 +22,23 @@ die () {
         exit 1
 }
 
+uuid() {
+        # Generate a pseudo UUID in BASH.
+        # Adapted from https://gist.github.com/markusfisch/6110640
+        local N B C='89ab'
+        for (( N=0; N < 16; ++N )); do
+                B=$(( $RANDOM%256 ))
+                case "$N" in
+                        6) printf '4%x' $(( B%16 )) ;;
+                        8) printf '%c%x' ${C:$RANDOM%${#C}:1} $(( B%16 )) ;;
+                        3 | 5 | 7 | 9)
+                           printf '%02x-' $B ;;
+                        *) printf '%02x' $B ;;
+                esac
+        done
+        echo
+}
+
 
 ### Pre-requisite: Download the Firefly ISO image from SourceForge project
 ### http://sourceforge.net/projects/fireflyfailsafe/files/ to your $DOWNLOADDIR
@@ -85,6 +102,8 @@ if ! beadm list "$FIREFLY_BEOLD" ; then
         ( cd "$RPOOLALT$FIREFLY_BEOLD_MPT" && 7z x "$DOWNLOADDIR/$FIREFLY_BEOLD.iso" ) \
         || die "Could not seed baseline Firefly dataset FIREFLY_BEOLD='$FIREFLY_BEOLD'"
         zfs umount "$RPOOL_ROOT/$FIREFLY_BEOLD"
+        zfs set org.opensolaris.libbe:uuid="`uuid`" "$RPOOL_ROOT/$FIREFLY_BEOLD" \
+        || echo "WARNING: Failed to set (optional) libbe uuid on '$RPOOL_ROOT/$FIREFLY_BEOLD'"
 
         if [ -s "$GRUB_MENU" ]; then
                 if egrep "^bootfs $RPOOL_ROOT/$FIREFLY_BEOLD\$" "$GRUB_MENU" > /dev/null; then
