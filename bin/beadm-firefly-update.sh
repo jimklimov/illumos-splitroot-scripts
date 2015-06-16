@@ -22,6 +22,7 @@ die () {
         exit 1
 }
 
+
 ### Pre-requisite: Download the Firefly ISO image from SourceForge project
 ### http://sourceforge.net/projects/fireflyfailsafe/files/ to your $DOWNLOADDIR
 [ -z "$DOWNLOADDIR" ] && \
@@ -67,9 +68,9 @@ CURRENT_RPOOL="`grep -w / /etc/mnttab | grep -w zfs | sed 's,^\([^\/]*\)/.*,\1,'
 [ -z "$FFARCH_FILE" ] && FFARCH_FILE="/tmp/ff-$FIREFLY_BEOLD.img"
 
 if [ -z "$GRUB_MENU" ]; then
-	[ -z "$RPOOLALT" ] && \
-	    ALTROOT_ARG="" || \
-	    ALTROOT_ARG="-R $RPOOLALT"
+        [ -z "$RPOOLALT" ] && \
+            ALTROOT_ARG="" || \
+            ALTROOT_ARG="-R $RPOOLALT"
         GRUB_MENU="`LANG=C bootadm list-menu $ALTROOT_ARG | grep 'the location for the active GRUB menu is' | awk '{print $NF}'`"
         [ $? = 0 ] && [ -n "$GRUB_MENU" ] \
         || GRUB_MENU="$RPOOLALT/rpool/boot/grub/menu.lst"
@@ -85,15 +86,20 @@ if ! beadm list "$FIREFLY_BEOLD" ; then
         || die "Could not seed baseline Firefly dataset FIREFLY_BEOLD='$FIREFLY_BEOLD'"
         zfs umount "$RPOOL_ROOT/$FIREFLY_BEOLD"
 
-        if [ -s "$GRUB_MENU" ] && ! egrep "^bootfs $RPOOL_ROOT/$FIREFLY_BEOLD\$" "$GRUB_MENU"; then
-            echo "Adding GRUB menu entry to use and to clone with 'beadm -e' later into '$GRUB_MENU'"
-            echo "title FireFly FailSafe Recovery $FIREFLY_BEOLD (from ISO) amd64
+        if [ -s "$GRUB_MENU" ]; then
+                if egrep "^bootfs $RPOOL_ROOT/$FIREFLY_BEOLD\$" "$GRUB_MENU" > /dev/null; then
+                echo "NOTE: Not adding GRUB menu entry into '$GRUB_MENU':" \
+                    "'bootfs $RPOOL_ROOT/$FIREFLY_BEOLD' line is already present there"
+                else
+                echo "Adding GRUB menu entry to use and to clone with 'beadm -e' later into '$GRUB_MENU'"
+                echo "title FireFly FailSafe Recovery $FIREFLY_BEOLD (from ISO) amd64
 bootfs $RPOOL_ROOT/$FIREFLY_BEOLD
 kernel /platform/i86pc/kernel/amd64/unix
 module /platform/i86pc/amd64/firefly
 #============ End of LIBBE entry =============" >> "$GRUB_MENU"
-	else
-	    echo "WARNING: Grub menu file not found at '$GRUB_MENU'"
+            fi
+        else
+            echo "WARNING: Grub menu file not found at '$GRUB_MENU'"
         fi
 fi
 
@@ -104,7 +110,7 @@ if beadm list "$FIREFLY_BENEW" ; then
             "  beadm destoy -Ffsv $FIREFLY_BENEW"
 else
         beadm create \
-            -d "FireFly FailSafe Recovery $FIREFLY_BENEW (auto-updated from $FIREFLY_BEOLD)" \
+            -d "FireFly FailSafe Recovery $FIREFLY_BENEW (auto-updated from $FIREFLY_BEOLD) amd64" \
             -e "$FIREFLY_BEOLD" "$FIREFLY_BENEW" \
         || die "Could not clone new Firefly dataset FIREFLY_BENEW='$FIREFLY_BENEW'"
 fi
