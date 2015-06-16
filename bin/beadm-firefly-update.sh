@@ -5,6 +5,15 @@
 ### Script Copyright (C) 2014-2015 by Jim Klimov
 ### Firefly Copyright (C) by Alex Eremin aka "alhazred"
 
+### NOTE: This is an experimental work in progress. This scritp does function,
+### but it is likely that some time in the future the variables used as inputs
+### here will be renamed so as to integrate this script with beadm-update.sh
+### where BENEW and BEOLD will refer to "production OS" BEs. Then there will
+### be a way to produce a Firefly BE tailored to the newly upgraded OS version.
+### Another venue of research is to maybe keep the Firefly archive image in
+### the current BE (along with its version of the "unix" binary) so booting
+### into the recovery mode is just a matter of attaching another "module$".
+
 die () {
         echo "" >&2
         while [ $# != 0 ]; do echo "$1"; shift; done >&2
