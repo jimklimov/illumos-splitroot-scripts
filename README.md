@@ -34,7 +34,7 @@ would reduce or eliminate their dependency on the `/usr` filesystem.
 
 A recent addition to this project is a script that aims to help manage
 keeping up-to-date the Firefly Failsafe image in a separate bootfs.
-The script is likely to evolve, expect the variable names to change...
+The script is likely to evolve, keep tuned...
 
 Hope this helps,
 Jim Klimov
