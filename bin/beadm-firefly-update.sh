@@ -44,6 +44,11 @@ initialize_envvars_beadm_firefly() {
         ### Download the Firefly ISO image from its SourceForge project
         ###   http://sourceforge.net/projects/fireflyfailsafe/files/
         ### to your $DOWNLOADDIR
+        isainfo | grep amd64 \
+                || die "ERROR: amd64 support not detected in the current OS" \
+                        "Known Firefly Failsafe versions require that," \
+                        "so running this script is irrelevant."
+
         [ -z "$DOWNLOADDIR" ] && \
                 DOWNLOADDIR="/export/distribs"
 
