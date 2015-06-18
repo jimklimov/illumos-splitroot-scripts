@@ -40,35 +40,10 @@ uuid() {
 }
 
 initialize_envvars_beadm_firefly() {
-        ### Pre-requisite currently expected:
-        ### Download the Firefly ISO image from its SourceForge project
-        ###   http://sourceforge.net/projects/fireflyfailsafe/files/
-        ### to your $DOWNLOADDIR
         isainfo | grep amd64 \
                 || die "ERROR: amd64 support not detected in the current OS" \
                         "Known Firefly Failsafe versions require that," \
                         "so running this script is irrelevant."
-
-        [ -z "$DOWNLOADDIR" ] && \
-                DOWNLOADDIR="/export/distribs"
-
-        ### The latest (by ctime of the file) baseline Firefly version
-        ### taken from ISO filename
-        [ -z "$FIREFLY_ISO" ] && \
-                FIREFLY_ISO="`ls --sort=time --time=ctime -1 ${DOWNLOADDIR}/firefly*.iso | head -1`"
-        ### Catch wildcards provided by user with "ls"
-        [ -n "$FIREFLY_ISO" ] && \
-                FIREFLY_ISO="`ls -1 $FIREFLY_ISO | sed 's,//,/,g'`" && \
-                [ -s "$FIREFLY_ISO" ] \
-                || die "No FIREFLY_ISO found"
-        ### TODO[1]: When integrating with common BENEW/BEOLD and storing
-        ### "firefly" archives in-place, using a separate FIREFLY_BEOLD
-        ### will become optional (flag?)
-        [ -z "$FIREFLY_BEOLD" ] && \
-                FIREFLY_BEOLD="`basename "$FIREFLY_ISO" .iso`"
-        [ $? = 0 -a -n "$FIREFLY_BEOLD" ] || die "No FIREFLY_BEOLD found"
-        ### ... example resulting string:
-        #FIREFLY_BEOLD="firefly_0215"
 
         ### The current BE name, will be used to pick up updated files
         ### to refresh the FF image, and to partially name the new FF BE
@@ -86,17 +61,149 @@ initialize_envvars_beadm_firefly() {
                 RPOOLALT="`zpool get altroot "$RPOOL" | tail -1 | awk '{print $3}'`"
         [ x"$RPOOLALT" = x- ] && RPOOLALT=""
 
-        ### The new Firefly BE to be updated with files from FIREFLY_BEOLD
-        [ -z "$FIREFLY_BENEW" ] && FIREFLY_BENEW="${FIREFLY_BEOLD}-${CURRENT_BE}"
-
         ### Mountpoints. Current BE is assumed to be at root "/" :)
-        [ -z "$FIREFLY_BENEW_MPT" ] && FIREFLY_BENEW_MPT="/tmp/ff-$FIREFLY_BENEW"
-        [ -z "$FIREFLY_BEOLD_MPT" ] && FIREFLY_BEOLD_MPT="/tmp/ff-$FIREFLY_BEOLD"
+        ### Intentionally untied from specific BE name values.
+        [ -z "$FIREFLY_BENEW_MPT" ] && \
+                FIREFLY_BENEW_MPT="/tmp/ff-FIREFLY_BENEW-$$"
+        [ -z "$FIREFLY_BEOLD_MPT" ] && \
+                FIREFLY_BEOLD_MPT="/tmp/ff-FIREFLY_BEOLD-$$"
         ### Here we'll lofi-mount the temporary Firefly image (archive) file
-        [ -z "$FFARCH_MPT" ] && FFARCH_MPT="/tmp/ff-$FIREFLY_BEOLD.img-mpt"
-        [ -z "$FFARCH_FILE" ] && FFARCH_FILE="/tmp/ff-$FIREFLY_BEOLD.img"
-        FFARCH_FILE_COMPRESSED="`dirname "$FFARCH_FILE"`/firefly.$$"
+        [ -z "$FFARCH_MPT" ] && \
+                FFARCH_MPT="/tmp/ff-FIREFLY_BEOLD-$$.img-mpt"
+        [ -z "$FFARCH_FILE" ] && \
+                FFARCH_FILE="/tmp/ff-FIREFLY_BEOLD-$$.img"
+        FFARCH_FILE_COMPRESSED="$FFARCH_FILE.gz"
         rm -f "$FFARCH_FILE_COMPRESSED"
+
+        ### Does the user want Firefly as a "standalone" bootable BE,
+        ### or "integrated" with OS BE (another bootarchive for same BE)?
+        ### Each choice has it pro's and con's, so it is up to the user.
+        ### Note that some versions of the bootloader may be unhappy when
+        ### there are too many individual BE's around.
+        case x"$FIREFLY_CONTAINER_TGT" in
+                x"standalone"|x"integrated") ;;
+                *)      FIREFLY_CONTAINER_TGT="standalone"
+                        echo "NOTE: Since FIREFLY_CONTAINER_TGT was not provided by caller, '$FIREFLY_CONTAINER_TGT' mode was chosen automatically"
+                        ;;
+        esac
+
+        ### A slightly different choice: if a "firefly" archive is available in
+        ### the main OS BE, should we look for an ISO and a Firefly BE at all?
+        ### The user may provide FIREFLY_CONTAINER_SRCAR for 'integrated' mode.
+        ### TODO[3]: With support for BENEW/BEOLD other than CURRENT_BE, some
+        ### better detection of the existing boot-archive is needed here.
+        FIREFLY_CONTAINER_SRCBE=""
+        case x"$FIREFLY_CONTAINER_SRC" in
+                x"standalone") ### may need to create the BE, done later
+                        [ -z "$FIREFLY_CONTAINER_SRCAR" ] && \
+                                FIREFLY_CONTAINER_SRCAR="" ;;
+                x"integrated") ### source - can be extracted from a download
+                        [ -z "$FIREFLY_CONTAINER_SRCAR" ] && \
+                                FIREFLY_CONTAINER_SRCAR="/platform/i86pc/amd64/firefly"
+                        [ -n "$FIREFLY_CONTAINER_SRCAR" ] && \
+                        [ ! -s "$FIREFLY_CONTAINER_SRCAR" ] && \
+                                echo "NOTE: FIREFLY_CONTAINER_SRC='$FIREFLY_CONTAINER_SRC' but '$FIREFLY_CONTAINER_SRCAR' file is absent at the moment"
+                        ;;
+                *)      [ -s "/platform/i86pc/amd64/firefly" ] && \
+                        [ -z "$FIREFLY_CONTAINER_SRCAR" ] && \
+                                FIREFLY_CONTAINER_SRCAR="/platform/i86pc/amd64/firefly"
+
+                        if [ -n "$FIREFLY_CONTAINER_SRCAR" ] ; then
+                                FIREFLY_CONTAINER_SRC="integrated"
+                        else
+                                FIREFLY_CONTAINER_SRCAR=""
+                                FIREFLY_CONTAINER_SRC="standalone"
+                        fi
+                        echo "NOTE: Since FIREFLY_CONTAINER_SRC was not provided by caller, '$FIREFLY_CONTAINER_SRC' mode was chosen automatically"
+                        ;;
+        esac
+
+        if [ "$FIREFLY_CONTAINER_SRC" = "standalone" ]; then
+                if [ -z "$FIREFLY_BEOLD" ] ; then
+                        ### Pick the latest baseline BE, if any...
+                        ### Convert the "firefly_MMYY" pattern back and forth for sorting
+                        FIREFLY_CONTAINER_SRCBE="`beadm list | awk 'match($1, /^firefly_[0-9]*$/) {print $1}' | sed 's,^\(firefly_\)\(..\)\(..\)$,\1\3\2,' | sort | tail -1 | sed 's,^\(firefly_\)\(..\)\(..\)$,\1\3\2,'`" 2>/dev/null \
+                        || FIREFLY_CONTAINER_SRCBE=""
+                        if [ -z "$FIREFLY_CONTAINER_SRCBE" ]; then
+                                ### Fall back to any firefly dataset...
+                                FIREFLY_CONTAINER_SRCBE="`beadm list | egrep '^firefly_' | awk '{print $1}' | tail -1`" \
+                                || FIREFLY_CONTAINER_SRCBE=""
+                        fi
+                else
+                        beadm list "$FIREFLY_BEOLD" > /dev/null 2>&1 && \
+                        FIREFLY_CONTAINER_SRCBE="$FIREFLY_BEOLD"
+                fi
+                if [ -n "$FIREFLY_CONTAINER_SRCBE" ]; then
+                        echo "NOTE: Using FIREFLY_CONTAINER_SRCBE='$FIREFLY_CONTAINER_SRCBE' as the assumed source BE dedicated to Firefly Failsafe"
+                        FIREFLY_CONTAINER_SRCAR="$FIREFLY_BEOLD_MPT/platform/i86pc/amd64/firefly"
+                fi
+        fi
+
+        if [ -n "$FIREFLY_CONTAINER_SRCAR" ] && \
+           [ -s "$FIREFLY_CONTAINER_SRCAR" -o \
+             -n "$FIREFLY_CONTAINER_SRCBE" ] \
+        ; then
+                echo "NOTE: We have the source archive we want ($FIREFLY_CONTAINER_SRCAR),"
+                echo "either directly or (assumed) as part of an existing dedicated BE ($FIREFLY_CONTAINER_SRCBE)"
+                ### Currently FIREFLY_BEOLD doubles as the base (downloaded)
+                ### version name used in other parts of the code
+                if [ -z "$FIREFLY_BEOLD" ] ; then
+                        [ -s "$FIREFLY_CONTAINER_SRCAR" ] && \
+                        [ -s "$FIREFLY_CONTAINER_SRCAR.version" ] && \
+                                FIREFLY_BEOLD="`head -1 < "$FIREFLY_CONTAINER_SRCAR".version`"
+
+                        [ -z "$FIREFLY_BEOLD" ] && \
+                        [ -n "$FIREFLY_CONTAINER_SRCBE" ] && \
+                                FIREFLY_BEOLD="`echo "$FIREFLY_CONTAINER_SRCBE" | sed 's,\(firefly_....\).*$,\1,'`"
+
+                        [ -z "$FIREFLY_BEOLD" ] && \
+                                FIREFLY_BEOLD="firefly_0000"
+
+                        echo "INFO: Decided that the source firefly bootarchive image is based on downloaded version '$FIREFLY_BEOLD'"
+                fi
+        else
+                ### Some variables to get the archive are needed...
+
+                ### Pre-requisite currently expected:
+                ### Download the Firefly ISO image from its SourceForge project
+                ###   http://sourceforge.net/projects/fireflyfailsafe/files/
+                ### to your $DOWNLOADDIR
+                [ -z "$DOWNLOADDIR" ] && \
+                        DOWNLOADDIR="/export/distribs"
+
+                ### The latest (by ctime of the file) baseline Firefly version
+                ### taken from ISO filename
+                [ -z "$FIREFLY_ISO" ] && \
+                        FIREFLY_ISO="`ls --sort=time --time=ctime -1 ${DOWNLOADDIR}/firefly*.iso | head -1`"
+                ### Catch wildcards (maybe provided by user) with "ls"
+                [ -n "$FIREFLY_ISO" ] && \
+                        FIREFLY_ISO="`ls -1 $FIREFLY_ISO | sed 's,//,/,g'`" && \
+                        [ -s "$FIREFLY_ISO" ] \
+                        || die "No FIREFLY_ISO value was found"
+
+                ### TODO[1]: When integrating with common BENEW/BEOLD and
+                ### storing "firefly" archives in-place, using a separate
+                ### FIREFLY_BEOLD will become optional (flag?)
+                [ -z "$FIREFLY_BEOLD" ] && \
+                        FIREFLY_BEOLD="`basename "$FIREFLY_ISO" .iso`" \
+                        || FIREFLY_BEOLD=""
+                ### ... example resulting string:
+                #FIREFLY_BEOLD="firefly_0215"
+        fi
+
+        ### Used at least in naming of other stuff, so required present
+        [ -n "$FIREFLY_BEOLD" ] \
+                || die "No FIREFLY_BEOLD value was found"
+
+        if [ "$FIREFLY_CONTAINER_TGT" = "standalone" ]; then
+                ### The new Firefly BE to be updated with files from
+                ### FIREFLY_BEOLD
+                [ -z "$FIREFLY_BENEW" ] && \
+                        FIREFLY_BENEW="${FIREFLY_BEOLD}-${CURRENT_BE}"
+        else
+                ### No BE to create, can (should?) stay empty
+                FIREFLY_BENEW=""
+        fi
 
         if [ -z "$GRUB_MENU" ]; then
                 [ -z "$RPOOLALT" ] && \
@@ -108,58 +215,193 @@ initialize_envvars_beadm_firefly() {
         fi
 }
 
-firefly_beold_populate() {
-        ### Seed the initial image, if needed
+beadm_create_raw_begin() {
+        ### Creates a BE "$1" with mountpoint in "$2"
+        zfs create \
+                -o mountpoint="$2" -o canmount=noauto \
+                "$RPOOL_ROOT/$1" \
+        || die "Could not create a BE dataset '$RPOOL_ROOT/$1'"
+}
+
+beadm_create_raw_finish() {
+        ### Creates a BE "$1": more work if it is done and populated well
+        ### Adds a GRUB comment in $2
+        zfs set org.opensolaris.libbe:uuid="`uuid`" "$RPOOL_ROOT/$1" \
+        || echo "WARNING: Failed to set (optional) libbe uuid on '$RPOOL_ROOT/$1'"
+
+        if [ -s "$GRUB_MENU" ]; then
+                 if egrep "^bootfs $RPOOL_ROOT/$1\$" \
+                    "$GRUB_MENU" > /dev/null; then
+                        echo "NOTE: Not adding GRUB menu entry into '$GRUB_MENU':" \
+                             "'bootfs $RPOOL_ROOT/$1' line is already present there"
+                 else
+                        echo "Adding GRUB menu entry to use and to clone with 'beadm -e' later into '$GRUB_MENU'"
+                        echo "title FireFly FailSafe Recovery $1 $2 amd64
+bootfs $RPOOL_ROOT/$1
+kernel /platform/i86pc/kernel/amd64/unix
+module /platform/i86pc/amd64/firefly
+#============ End of LIBBE entry =============" >> "$GRUB_MENU"
+                 fi
+        else
+                 echo "WARNING: Grub menu file not found at '$GRUB_MENU'"
+        fi
+        return 0
+}
+
+firefly_src_standalone_populate_beold() {
+        ### Seed the initial image in a standalone BE, if needed
         ### TODO: See TODO[1] above
+        [ "$FIREFLY_CONTAINER_SRC" != "standalone" ] && return 127
+
         if ! beadm list "$FIREFLY_BEOLD" ; then
                 [ -n "$FIREFLY_ISO" ] && [ -s "$FIREFLY_ISO" ] \
-                || die "No FIREFLY_ISO found"
+                || die "No FIREFLY_ISO value was found"
 
-                zfs create \
-                    -o mountpoint="$FIREFLY_BEOLD_MPT" -o canmount=noauto \
-                    "$RPOOL_ROOT/$FIREFLY_BEOLD" && \
+                beadm_create_raw_begin "$FIREFLY_BEOLD" "$FIREFLY_BEOLD_MPT" && \
                 zfs mount "$RPOOL_ROOT/$FIREFLY_BEOLD" && \
                 ( cd "$RPOOLALT$FIREFLY_BEOLD_MPT" && \
                   7z x "$DOWNLOADDIR/$FIREFLY_BEOLD.iso" ) \
                 || die "Could not seed baseline Firefly dataset FIREFLY_BEOLD='$FIREFLY_BEOLD'"
                 zfs umount "$RPOOL_ROOT/$FIREFLY_BEOLD"
-                zfs set org.opensolaris.libbe:uuid="`uuid`" "$RPOOL_ROOT/$FIREFLY_BEOLD" \
-                || echo "WARNING: Failed to set (optional) libbe uuid on '$RPOOL_ROOT/$FIREFLY_BEOLD'"
-
-                if [ -s "$GRUB_MENU" ]; then
-                        if egrep "^bootfs $RPOOL_ROOT/$FIREFLY_BEOLD\$" \
-                            "$GRUB_MENU" > /dev/null; then
-                                echo "NOTE: Not adding GRUB menu entry into '$GRUB_MENU':" \
-                                    "'bootfs $RPOOL_ROOT/$FIREFLY_BEOLD' line is already present there"
-                        else
-                        echo "Adding GRUB menu entry to use and to clone with 'beadm -e' later into '$GRUB_MENU'"
-                        echo "title FireFly FailSafe Recovery $FIREFLY_BEOLD (from ISO) amd64
-bootfs $RPOOL_ROOT/$FIREFLY_BEOLD
-kernel /platform/i86pc/kernel/amd64/unix
-module /platform/i86pc/amd64/firefly
-#============ End of LIBBE entry =============" >> "$GRUB_MENU"
-                        fi
-                else
-                        echo "WARNING: Grub menu file not found at '$GRUB_MENU'"
-                fi
+                beadm_create_raw_finish "$FIREFLY_BEOLD" "(from ISO)"
         fi
+        FIREFLY_CONTAINER_SRCAR="$FIREFLY_BEOLD_MNT/platform/i86pc/amd64/firefly"
+}
+
+firefly_integrated_addgrub() {
+        ### Removal of menu entries associated with a BE is handled by beadm,
+        ### but creation - not quite so: only one (first?) is replicated...
+        ### Params:
+        ### $1 = bootfs
+        ### $2 = kernel
+        ### $3 = module (relative to bootfs! exercise for the caller!)
+        ### $4 = optional base version of the firefly image (original download)
+        [ "$FIREFLY_CONTAINER_SRC" != "integrated" ] && return 127
+        [ -z "$1" -o -z "$2" -o -z "$3" ] && \
+                echo "WARNING: firefly_integrated_addgrub() called with invalid params '$@'" >&2 && \
+                return 1        ### Not fatal
+        if [ -z "$4" ]; then
+                [ -s "$3" ] && \
+                [ -s "$3.version" ] && \
+                        FFVERSUFFIX="__`head -1 < "$3".version`" \
+                || FFVERSUFFIX="__firefly_0000"
+        else
+                FFVERSUFFIX="__$4"
+        fi
+
+        if [ -s "$GRUB_MENU" ]; then
+                ### Loop through menu file, detect if the entry is present
+                ENTRY_PRESENT=no
+                _T=""
+                _B=""
+                _K=""
+                _M=""
+                while read TAG LINE; do case "$TAG" in
+                        [Tt][Ii][Tt][Ll][Ee])
+                                [ "$_B" = "$1" -a "$_M" = "$3" ] && \
+                                        ENTRY_PRESENT=yes && break
+                                _T="$LINE"
+                                _B=""; _K=""; _M="" ;;
+                        bootfs) _B="$LINE" ;;
+                        kernel|kernel\$) _K="$LINE" ;;
+                        module|module\$) _M="$LINE" ;;
+                        # TODO: Note that in kernel$ and module$ generally we
+                        # are likely to have to expand $ISADIR, but we don't
+                        # generate such entries now anyway.
+                        \#===*) case "$LINE" in
+                                End\ of\ LIBBE\ entry*)
+                                        [ "$_B" = "$1" -a "$_M" = "$3" ] && \
+                                                ENTRY_PRESENT=yes && break
+                                        ;;
+                                esac ;;
+                esac; done < "$GRUB_MENU"
+                [ "$_B" = "$1" -a "$_M" = "$3" ] && \
+                        ENTRY_PRESENT=yes
+
+                if [ "$ENTRY_PRESENT" = yes ]; then
+                        echo "NOTE: Not adding GRUB menu entry into '$GRUB_MENU':" \
+                             "'bootfs $1' with 'module $3' already present there"
+                else
+                        echo "Adding GRUB menu entry for failsafe integrated with '$1' into '$GRUB_MENU'"
+                        echo "title `basename "$1"`${FFVERSUFFIX} failsafe (amd64)
+bootfs $1
+kernel $2
+module $3
+#============ End of LIBBE entry =============" >> "$GRUB_MENU"
+                fi
+        else
+                echo "WARNING: Grub menu file not found at '$GRUB_MENU'"
+        fi
+}
+
+firefly_src_integrated_populate() {
+        ### Seed the initial image integrated in the main OS BE, if needed
+        ### TODO: See TODO[1] above (for ALTROOTed OS BEs)
+        [ "$FIREFLY_CONTAINER_SRC" != "integrated" ] && return 127
+
+        if [ -z "$FIREFLY_CONTAINER_SRCAR" ] || \
+           [ ! -s "$FIREFLY_CONTAINER_SRCAR" ] \
+        ; then
+                [ -n "$FIREFLY_ISO" ] && [ -s "$FIREFLY_ISO" ] \
+                || die "No FIREFLY_ISO value was found"
+
+                ### See TODO[1]: Revise for ALTROOT (BENEW) support later
+                [ -z "$FIREFLY_CONTAINER_SRCAR" ] && \
+                        FIREFLY_CONTAINER_SRCAR="/platform/i86pc/amd64/firefly"
+
+                ### TODO: While this supports arbitrary source archive storage,
+                ### method is inherently limited to single file per operation.
+                ### If not only "amd64" is to be supported, this needs a loop.
+                7z -so x "$FIREFLY_ISO" platform/i86pc/amd64/firefly > "$FIREFLY_CONTAINER_SRCAR" \
+                || die "Could not seed baseline Firefly image into '$FIREFLY_CONTAINER_SRCAR'"
+                echo "$FIREFLY_BEOLD" > "$FIREFLY_CONTAINER_SRCAR.version"
+        else
+                echo "INFO: Using an existing FIREFLY_CONTAINER_SRCAR='$FIREFLY_CONTAINER_SRCAR' archive as source"
+        fi
+
+        ### See TODO[1]: Revise for ALTROOT (BENEW) support later
+        firefly_integrated_addgrub \
+                "$RPOOL_ROOT/$CURRENT_BE" \
+                "/platform/i86pc/kernel/amd64/unix" \
+                "$FIREFLY_CONTAINER_SRCAR" \
+                "$FIREFLY_BEOLD"
 }
 
 firefly_tmpimg_copy_from_beold() {
         ### Mount the baseline image BE
         ### TODO: See TODO[1] above
+        [ "$FIREFLY_CONTAINER_SRC" != "standalone" ] && return 127
+
         beadm mount "$FIREFLY_BEOLD" "$FIREFLY_BEOLD_MPT"
         [ $? = 0 -o $? = 180 ] \
                 || die "Could not mount FIREFLY_BEOLD='$FIREFLY_BEOLD' to FIREFLY_BEOLD_MPT='$FIREFLY_BEOLD_MPT'"
         [ -d "$FIREFLY_BEOLD_MPT" ] && ( cd "$FIREFLY_BEOLD_MPT" ) \
                 || die "Could not use FIREFLY_BEOLD_MPT='$FIREFLY_BEOLD_MPT'"
 
+        echo "Unpacking a Firefly image file from standalone BE '$FIREFLY_BEOLD'..."
         ### Prepare a copy of the Firefly image for modifications
         mkdir -p "`dirname "$FFARCH_FILE"`" "$FFARCH_MPT"
         gzcat "$FIREFLY_BEOLD_MPT"/platform/i86pc/amd64/firefly > "$FFARCH_FILE" \
                 || die "Could not unpack Firefly image file"
 
         beadm umount "$FIREFLY_BEOLD"
+}
+
+firefly_tmpimg_copy_from_integrated() {
+        ### See TODO[1]: Revise for ALTROOT (BENEW) support later
+        [ "$FIREFLY_CONTAINER_SRC" != "integrated" ] && return 127
+
+        if [ -z "$FIREFLY_CONTAINER_SRCAR" ] || \
+           [ ! -s "$FIREFLY_CONTAINER_SRCAR" ] \
+        ; then
+                die "Firefly image file FIREFLY_CONTAINER_SRCAR='$FIREFLY_CONTAINER_SRCAR' not found"
+        fi
+
+        echo "Unpacking an integrated Firefly image file '$FIREFLY_CONTAINER_SRCAR'..."
+        ### Prepare a copy of the Firefly image for modifications
+        mkdir -p "`dirname "$FFARCH_FILE"`" "$FFARCH_MPT"
+        gzcat "$FIREFLY_CONTAINER_SRCAR" > "$FFARCH_FILE" \
+                || die "Could not unpack Firefly image file"
 }
 
 firefly_tmpimg_mount() {
@@ -174,7 +416,9 @@ firefly_tmpimg_update_contents() {
 
 # Update the kernel bits in this image (rooted at "current dir" == `pwd`)
 # with files from the running system (rooted at "/")
-# (C) 2014 by Jim Klimov
+# (C) 2014-2015 by Jim Klimov
+# Generated by beadm-firefly-update.sh
+# See https://github.com/jimklimov/illumos-splitroot-scripts
 
 for D in `pwd`/kernel `pwd`/platform; do
  cd "$D" && \
@@ -217,12 +461,14 @@ firefly_tmpimg_cleanup_files() {
         || die "Could not clean up the temporary Firefly the image files"
 }
 
-firefly_benew_create_mount() {
+firefly_tgt_standalone_create_mount() {
         ### Store the image file into a BE
         ### TODO[2]: When integrating with common BENEW/BEOLD and storing
         ### "firefly" archives in-place, implement a flag to store in-place
         ### and update menu.lst instead of making a new BE... end-users may
         ### want both options, their choice
+        [ "$FIREFLY_CONTAINER_TGT" != "standalone" ] && return 127
+
         echo "Clone and mount the new FireFly Failsafe BE dataset..."
         if beadm list "$FIREFLY_BENEW" ; then
                 die "A Firefly dataset FIREFLY_BENEW='$FIREFLY_BENEW' already exists" \
@@ -230,10 +476,16 @@ firefly_benew_create_mount() {
                     "  beadm destoy -Ffsv $FIREFLY_BENEW"
         else
                 ### NOTE: "beadm create" properly clones the boot-menu block
-                beadm create \
+                if ! beadm create \
                     -d "FireFly FailSafe Recovery $FIREFLY_BENEW (auto-updated from $FIREFLY_BEOLD) amd64" \
                     -e "$FIREFLY_BEOLD" "$FIREFLY_BENEW" \
-                || die "Could not clone new Firefly dataset FIREFLY_BENEW='$FIREFLY_BENEW'"
+                ; then
+                        echo "WARN: Could not clone new Firefly dataset FIREFLY_BENEW='$FIREFLY_BENEW'"
+                        echo "Trying to create a new BE '$FIREFLY_BENEW' from scratch..."
+                        ### This dies if fails
+                        beadm_create_raw_begin "$FIREFLY_BENEW" "$FIREFLY_BENEW_MPT" && \
+                        beadm_create_raw_finish "$FIREFLY_BENEW" "(from ISO)"
+                fi
         fi
 
         beadm mount "$FIREFLY_BENEW" "$FIREFLY_BENEW_MPT"
@@ -243,10 +495,17 @@ firefly_benew_create_mount() {
                 || die "Could not use FIREFLY_BENEW_MPT='$FIREFLY_BENEW_MPT'"
 }
 
-firefly_benew_update_files() {
-        firefly_benew_create_mount || return $?
+firefly_tgt_standalone_update_files() {
+        [ "$FIREFLY_CONTAINER_TGT" != "standalone" ] && return 127
+        firefly_tgt_standalone_create_mount || return $?
         echo "Copying updated files into new FireFly Failsafe BE dataset..."
+
         ### Note that i386 32-bit kernels are not supported by current Firefly
+        mkdir -p \
+                "$FIREFLY_BENEW_MPT"/platform/i86pc/kernel/amd64 \
+                "$FIREFLY_BENEW_MPT"/platform/i86pc/kernel/kmdb/amd64
+                "$FIREFLY_BENEW_MPT"/platform/i86pc/amd64
+
         cp -pf /platform/i86pc/kernel/amd64/unix \
                 "$FIREFLY_BENEW_MPT"/platform/i86pc/kernel/amd64/unix \
                 || die
@@ -259,15 +518,43 @@ firefly_benew_update_files() {
         beadm umount "$FIREFLY_BENEW_MPT"
 }
 
+firefly_tgt_integrated_update_files() {
+        ### See TODO[1]: Revise for ALTROOT (BENEW/BENEW_MPT) support later
+        [ "$FIREFLY_CONTAINER_TGT" != "integrated" ] && return 127
+
+        echo "Copying updated files into main OS BE dataset..."
+        ### Note that i386 32-bit kernels are not supported by current Firefly
+        cp -pf "$FFARCH_FILE_COMPRESSED" \
+                /platform/i86pc/amd64/firefly \
+                || die
+
+        [ -s /platform/i86pc/amd64/firefly.version ] && \
+                echo "NOTE: Original version marked in /platform/i86pc/amd64/firefly.version is '`cat /platform/i86pc/amd64/firefly.version`'" || \
+                echo "WARN: Please record the original 'firefly_MMYY' version into /platform/i86pc/amd64/firefly.version"
+
+        firefly_integrated_addgrub \
+                "$RPOOL_ROOT/$CURRENT_BE" \
+                "/platform/i86pc/kernel/amd64/unix" \
+                "/platform/i86pc/amd64/firefly" \
+                ""      # Rely on .version file if exists
+}
+
 # Overview of functional logic, blocks that are easy to juggle around
 initialize_envvars_beadm_firefly
-firefly_beold_populate
-firefly_tmpimg_copy_from_beold
+firefly_src_standalone_populate_beold || \
+firefly_src_integrated_populate
+
+firefly_tmpimg_copy_from_beold || \
+firefly_tmpimg_copy_from_integrated
+
 firefly_tmpimg_mount
 firefly_tmpimg_update_contents
 firefly_tmpimg_cleanup_mounts
 firefly_tmpimg_recompress
-firefly_benew_update_files
+
+firefly_tgt_standalone_update_files || \
+firefly_tgt_integrated_update_files
+
 firefly_tmpimg_cleanup_files
 
 echo "If all went well above, you are ready to reboot into this updated Firefly"
