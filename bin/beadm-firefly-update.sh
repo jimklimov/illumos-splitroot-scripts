@@ -574,8 +574,15 @@ done
         (       cd "$FIREFLY_ARCHIVE_MPT/bin" && \
                 ls -la sh | grep ksh93 >/dev/null && \
                 [ -x ./bash ] && \
-                echo "Fixing the default failsafe shell to be BASH..." && \
-                { rm -f sh ; ln -s bash sh; }
+                echo "Fixing the default failsafe bin/sh shell to be BASH..." && \
+                { rm -f sh ; ln -s ./bash sh; }
+        )
+
+        (       cd "$FIREFLY_ARCHIVE_MPT/sbin" && \
+                ls -la sh | grep ksh93 >/dev/null && \
+                [ -x ../usr/bin/bash ] && \
+                echo "Fixing the default failsafe sbin/sh shell to be BASH..." && \
+                { rm -f sh ; ln -s ../usr/bin/bash sh; }
         )
 
         echo "INFO: Zeroing out unallocated space..."
