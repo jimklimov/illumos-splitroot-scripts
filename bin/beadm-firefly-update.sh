@@ -143,12 +143,12 @@ initialize_envvars_beadm_firefly() {
         [ -z "$FIREFLY_BEOLD_MPT" ] && \
                 FIREFLY_BEOLD_MPT="/tmp/ff-FIREFLY_BEOLD-$$.mpt"
         ### Here we'll lofi-mount the temporary Firefly image (archive) file
-        [ -z "$FFARCH_MPT" ] && \
-                FFARCH_MPT="/tmp/ff-FIREFLY_ARCHIVE-$$.mpt"
-        [ -z "$FFARCH_FILE" ] && \
-                FFARCH_FILE="/tmp/ff-FIREFLY_ARCHIVE-$$.img"
-        FFARCH_FILE_COMPRESSED="$FFARCH_FILE.gz"
-        rm -f "$FFARCH_FILE_COMPRESSED"
+        [ -z "$FIREFLY_ARCHIVE_MPT" ] && \
+                FIREFLY_ARCHIVE_MPT="/tmp/ff-FIREFLY_ARCHIVE-$$.mpt"
+        [ -z "$FIREFLY_ARCHIVE_FILE" ] && \
+                FIREFLY_ARCHIVE_FILE="/tmp/ff-FIREFLY_ARCHIVE-$$.img"
+        FIREFLY_ARCHIVE_FILE_COMPRESSED="$FIREFLY_ARCHIVE_FILE.gz"
+        rm -f "$FIREFLY_ARCHIVE_FILE_COMPRESSED"
 
         ### Two variables are defaulted below after some detection magic
         ### if not provided by the caller explicitly.
@@ -501,8 +501,8 @@ firefly_tmpimg_unpack_from_beold() {
 
         echo "Unpacking a Firefly image file from standalone BE '$FIREFLY_BEOLD'..."
         ### Prepare a copy of the Firefly image for modifications
-        mkdir -p "`dirname "$FFARCH_FILE"`"
-        gzcat "$FIREFLY_BEOLD_MPT"/platform/i86pc/amd64/firefly > "$FFARCH_FILE" \
+        mkdir -p "`dirname "$FIREFLY_ARCHIVE_FILE"`"
+        gzcat "$FIREFLY_BEOLD_MPT"/platform/i86pc/amd64/firefly > "$FIREFLY_ARCHIVE_FILE" \
                 || die "Could not unpack Firefly image file"
 
         beadm umount "$FIREFLY_BEOLD"
@@ -521,14 +521,14 @@ firefly_tmpimg_unpack_from_integrated() {
 
         echo "Unpacking an integrated Firefly image file '$FIREFLY_CONTAINER_SRCAR'..."
         ### Prepare a copy of the Firefly image for modifications
-        mkdir -p "`dirname "$FFARCH_FILE"`"
-        gzcat "$FIREFLY_CONTAINER_SRCAR" > "$FFARCH_FILE" \
+        mkdir -p "`dirname "$FIREFLY_ARCHIVE_FILE"`"
+        gzcat "$FIREFLY_CONTAINER_SRCAR" > "$FIREFLY_ARCHIVE_FILE" \
                 || die "Could not unpack Firefly image file"
 }
 
 firefly_tmpimg_mount() {
-        mkdir -p "$FFARCH_MPT"
-        mount -F ufs "`lofiadm -a "$FFARCH_FILE"`" "$FFARCH_MPT" \
+        mkdir -p "$FIREFLY_ARCHIVE_MPT"
+        mount -F ufs "`lofiadm -a "$FIREFLY_ARCHIVE_FILE"`" "$FIREFLY_ARCHIVE_MPT" \
                 || die "Could not mount the temporary Firefly image file"
 }
 
@@ -554,26 +554,26 @@ for D in `pwd`/kernel `pwd`/platform; do
    echo "=== No $RFP nor $RFK !"
   done
 done
-' > "$FFARCH_MPT"/update-kernel.sh
+' > "$FIREFLY_ARCHIVE_MPT"/update-kernel.sh
 ####################
 
         [ $? = 0 ] && ( \
-                cd "$FFARCH_MPT" && \
+                cd "$FIREFLY_ARCHIVE_MPT" && \
                 chmod +x update-kernel.sh && \
                 echo "Updating kernel bits in the temporary Firefly image file..." && \
                 ./update-kernel.sh \
         ) || die "Could not update kernel bits in the temporary Firefly image file"
 
         echo "Zeroing out unallocated space..."
-        dd if=/dev/zero of="$FFARCH_MPT/bigzero" >/dev/null 2>&1
-        rm -f "$FFARCH_MPT/bigzero"
+        dd if=/dev/zero of="$FIREFLY_ARCHIVE_MPT/bigzero" >/dev/null 2>&1
+        rm -f "$FIREFLY_ARCHIVE_MPT/bigzero"
 }
 
 firefly_tmpimg_cleanup_mounts() {
         ### Initial clean-up after temporary-image update...
-        umount "$FFARCH_MPT" && \
-        lofiadm -d "$FFARCH_FILE" && \
-        rm -rf "$FFARCH_MPT" \
+        umount "$FIREFLY_ARCHIVE_MPT" && \
+        lofiadm -d "$FIREFLY_ARCHIVE_FILE" && \
+        rm -rf "$FIREFLY_ARCHIVE_MPT" \
         || die "Could not clean up the temporary Firefly image mountpoint"
 }
 
@@ -594,7 +594,7 @@ firefly_tmpimg_cleanup_files() {
                 *) ;;
         esac
 
-        rm -f "$FFARCH_FILE" "$FFARCH_FILE_COMPRESSED" "$FFARCH_FILE_COMPRESSED".version \
+        rm -f "$FIREFLY_ARCHIVE_FILE" "$FIREFLY_ARCHIVE_FILE_COMPRESSED" "$FIREFLY_ARCHIVE_FILE_COMPRESSED".version \
         || die "Could not clean up the temporary Firefly the image files"
 }
 
@@ -610,10 +610,10 @@ trap_cleanup() {
 firefly_tmpimg_recompress() {
         echo "Recompressing the updated Firefly image file (gzip$GZIP_LEVEL)..."
         trap "trap_cleanup" 1 2 3 15
-        gzip -c $GZIP_LEVEL < "$FFARCH_FILE" > "$FFARCH_FILE_COMPRESSED" \
+        gzip -c $GZIP_LEVEL < "$FIREFLY_ARCHIVE_FILE" > "$FIREFLY_ARCHIVE_FILE_COMPRESSED" \
                 || die "Could not recompress the Firefly image file"
         if [ -n "$FIREFLY_BASEVER" ] && [ "$FIREFLY_BASEVER" != "firefly_0000" ]; then
-                echo "$FIREFLY_BASEVER" > "$FFARCH_FILE_COMPRESSED".version
+                echo "$FIREFLY_BASEVER" > "$FIREFLY_ARCHIVE_FILE_COMPRESSED".version
         fi
         trap - 1 2 3 15
 }
@@ -670,7 +670,7 @@ firefly_tgt_standalone_update_files() {
         cp -pf /platform/i86pc/kernel/kmdb/amd64/unix \
                 "$FIREFLY_BENEW_MPT"/platform/i86pc/kernel/kmdb/amd64/unix \
                 || die
-        cp -pf "$FFARCH_FILE_COMPRESSED" \
+        cp -pf "$FIREFLY_ARCHIVE_FILE_COMPRESSED" \
                 "$FIREFLY_BENEW_MPT"/platform/i86pc/amd64/firefly \
                 || die
         beadm umount "$FIREFLY_BENEW_MPT"
@@ -684,7 +684,7 @@ firefly_tgt_integrated_update_files() {
         echo "Copying updated files into main OS BE dataset..."
         ### Note that i386 32-bit kernels are not supported by current Firefly
         ### TODO: Revise if this changes
-        cp -pf "$FFARCH_FILE_COMPRESSED" \
+        cp -pf "$FIREFLY_ARCHIVE_FILE_COMPRESSED" \
                 "$BENEW_MPT"/platform/i86pc/amd64/firefly \
                 || die
 
