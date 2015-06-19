@@ -566,6 +566,13 @@ done
                 ALTROOT="$BENEW_MPT" ./update-kernel.sh \
         ) || die "Could not update kernel bits in the temporary Firefly image file"
 
+        (       cd "$FIREFLY_ARCHIVE_MPT/bin" && \
+                ls -la sh | grep ksh93 >/dev/null && \
+                [ -x ./bash ] && \
+                echo "Fixing the default failsafe shell to be BASH..." && \
+                { rm -f sh ; ln -s bash sh; }
+        )
+
         echo "INFO: Zeroing out unallocated space..."
         dd if=/dev/zero of="$FIREFLY_ARCHIVE_MPT/bigzero" >/dev/null 2>&1
         rm -f "$FIREFLY_ARCHIVE_MPT/bigzero"
