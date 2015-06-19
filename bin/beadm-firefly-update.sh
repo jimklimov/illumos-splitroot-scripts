@@ -243,8 +243,13 @@ initialize_envvars_beadm_firefly() {
 
         case x"$FIREFLY_CONTAINER_TGT" in
                 x"standalone"|x"integrated") ;;
-                *)      FIREFLY_CONTAINER_TGT="$FIREFLY_CONTAINER_SRC"
-                        echo "NOTE: Since FIREFLY_CONTAINER_TGT was not provided by caller, '$FIREFLY_CONTAINER_TGT' mode was chosen automatically to match FIREFLY_CONTAINER_SRC"
+                *)      if [ -s "$BENEW_MPT/platform/i86pc/amd64/firefly" ]; then
+                                FIREFLY_CONTAINER_TGT="integrated"
+                                echo "NOTE: Since FIREFLY_CONTAINER_TGT was not provided by caller, '$FIREFLY_CONTAINER_TGT' mode was chosen automatically because there is a '$BENEW_MPT/platform/i86pc/amd64/firefly' image"
+                        else
+                                FIREFLY_CONTAINER_TGT="$FIREFLY_CONTAINER_SRC"
+                                echo "NOTE: Since FIREFLY_CONTAINER_TGT was not provided by caller, '$FIREFLY_CONTAINER_TGT' mode was chosen automatically to match FIREFLY_CONTAINER_SRC"
+                        fi
                         ;;
         esac
 
