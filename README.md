@@ -34,7 +34,10 @@ would reduce or eliminate their dependency on the `/usr` filesystem.
 
 A recent addition to this project is a script that aims to help manage
 keeping up-to-date the Firefly Failsafe image in a "standalone" bootfs
-or "integrated" with an OS rootfs.
+or "integrated" with an OS rootfs (initial ISO image must be downloaded
+by the user). It is integrated with `beadm-upgrade.sh` to update and
+embed a failsafe image in newly upgraded BE's, if an original "firefly"
+archive is available.
 
 The script is likely to evolve, keep tuned...
 

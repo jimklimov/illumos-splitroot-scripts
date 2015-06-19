@@ -16,6 +16,7 @@ export LANG LC_ALL PATH
 RES_PKGIPS=-1
 RES_PKGSRC=-1
 RES_BOOTADM=-1
+RES_FIREFLY=-1
 BREAKOUT=n
 
 trap_exit_upgrade() {
@@ -27,7 +28,10 @@ trap_exit_upgrade() {
     echo ""
 
     if [ $RES_EXIT = 0 -a $BREAKOUT = n -a \
-        $RES_PKGIPS -le 0 -a $RES_PKGSRC -le 0 -a $RES_BOOTADM -le 0 ] ; then
+        $RES_PKGIPS -le 0 -a $RES_PKGSRC -le 0 -a $RES_BOOTADM -le 0 ] \
+    ; then
+        ### We do not care much about RES_FIREFLY now, which could fail
+        ### for many reasons such as lack of the downloaded ISO image
         echo "=== SUCCESS, you can now do:" >&2
         echo "  beadm activate $BENEW    && init 6" >&2
         exit 0
@@ -199,6 +203,21 @@ do_reconfig() {
     RES_BOOTADM=$?
 }
 
+do_firefly() {
+    [ -x "`dirname "$0"`/beadm-firefly-update.sh" ] && \
+    if [ $RES_PKGIPS -le 0 -a $RES_PKGSRC -le 0 -a $RES_BOOTADM -le 0 ] || \
+       [ -n "`set | grep FIREFLY`" ] \
+    ; then
+        [ -z "$FIREFLY_CONTAINER_TGT" ] && \
+                FIREFLY_CONTAINER_TGT=integrated
+        export FIREFLY_CONTAINER_TGT BENEW BENEW_MPT CURRENT_BE CURRENT_RPOOL RPOOL RPOOL_ROOT RPOOLALT
+        echo "=== Trying to upgrade the Firefly Failsafe image (if available)" \
+                "in the new BE, since package updates succeeded there..."
+        "`dirname "$0"`/beadm-firefly-update.sh"
+        RES_FIREFLY=$?
+    fi
+}
+
 do_upgrade() {
     do_ensure_configs || exit
     do_clone_mount || exit
@@ -221,10 +240,13 @@ do_upgrade() {
     do_reconfig
 
     echo ""
+    do_firefly
+
+    echo ""
     do_clone_umount
 
     echo ""
-    echo "=== Done: IPS=$RES_PKGIPS PKGSRC=$RES_PKGSRC BOOTADM=$RES_BOOTADM"
+    echo "=== Done: IPS=$RES_PKGIPS PKGSRC=$RES_PKGSRC BOOTADM=$RES_BOOTADM RES_FIREFLY=$RES_FIREFLY"
     echo "=== If upgrade was acceptable and successful:"
     echo ":; beadm activate '$BENEW'"
     echo "=== If you change your mind or if it failed:"

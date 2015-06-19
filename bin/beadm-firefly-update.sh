@@ -2,13 +2,15 @@
 
 ### Keep the Firefly failsafe image for illumos up-to-date
 ### See https://www.blogger.com/comment.g?blogID=3094974977265128267&postID=6716498883875252619
+### and https://github.com/jimklimov/illumos-splitroot-scripts
 ### Script Copyright (C) 2014-2015 by Jim Klimov
 ### Firefly Copyright (C) by Alex Eremin aka "alhazred"
 
 ### NOTE: This is an experimental work in progress. This script does function,
-### but it is likely that some time in the future this split-root project's
-### common variables BENEW and BEOLD will refer to "production OS" BEs.
-### Then there will be a way to produce a Firefly BE tailored to the newly
+### but it is currently configured in a user-unfriendly manner of setting some
+### environment variables that may be subject to change over time.
+### It is integrated with "illumos-splitroot-scripts" (if BENEW is passed by
+### the caller) as a way to produce an updated Firefly tailored to the newly
 ### upgraded OS version. Otherwise this script is quite autonomous by itself.
 ###
 ### This script helps both storage of the Firefly archive image "integrated"
@@ -701,7 +703,9 @@ firefly_tgt_integrated_update_files() {
                 echo "NOTE: Original version marked in '$BENEW_MPT/platform/i86pc/amd64/firefly.version' is '`cat "$BENEW_MPT"/platform/i86pc/amd64/firefly.version`'" || \
                 echo "WARN: Please record the original 'firefly_MMYY' version into '$BENEW_MPT/platform/i86pc/amd64/firefly.version'"
 
-        ls -lda "$BENEW_MPT"/platform/i86pc/amd64/firefly*
+        ls -lda "$BENEW_MPT"/platform/i86pc/amd64/firefly* \
+                "$BENEW_MPT"/platform/i86pc/kernel/amd64/unix \
+                "$BENEW_MPT"/platform/i86pc/kernel/kmdb/amd64/unix
 
         firefly_integrated_addgrub tgt \
                 "$RPOOL_ROOT/$BENEW" \
