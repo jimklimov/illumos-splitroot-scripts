@@ -30,10 +30,12 @@ these scripts can find them - but this has not been tested extensively).
 Also provided is an optional patch for network-related services which
 would reduce or eliminate their dependency on the `/usr` filesystem.
 
-# beadm-firefly-update.sh
+## beadm-firefly-update.sh
 
 A recent addition to this project is a script that aims to help manage
-keeping up-to-date the Firefly Failsafe image in a separate bootfs.
+keeping up-to-date the Firefly Failsafe image in a "standalone" bootfs
+or "integrated" with an OS rootfs.
+
 The script is likely to evolve, keep tuned...
 
 Hope this helps,
