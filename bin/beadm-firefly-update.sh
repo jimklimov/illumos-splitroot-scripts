@@ -10,10 +10,16 @@
 ### common variables BENEW and BEOLD will refer to "production OS" BEs.
 ### Then there will be a way to produce a Firefly BE tailored to the newly
 ### upgraded OS version. Otherwise this script is quite autonomous by itself.
-### Another related venue of research is to keep the Firefly archive image in
-### the current BE (along with its version of the "unix" binary) so booting
-### into the recovery mode is just a matter of attaching another "module$".
-### This saves some hassle with extra BE's (may cause scalability problems).
+###
+### This script helps both storage of the Firefly archive image "integrated"
+### with the current BE (along with its version of the "unix" binary) so that
+### booting into the recovery mode is just a matter of attaching another
+### "module$" in the boot-loader, as well as as a "standalone" recovery BE.
+### The former saves some hassle with extra BE's (which may cause scalability
+### problems), while the latter does not require to always upgrade the failsafe
+### image as you upgrade the kernel bits (many pieces must be in sync) and also
+### dormant little-used filesystems (dedicated to failsafe) tend to suffer less
+### from random system events that might impact a production RW root dataset.
 
 die() {
         [ $# != 0 ] && echo "" >&2
@@ -84,7 +90,8 @@ initialize_envvars_beadm_firefly() {
         ### or "integrated" with OS BE (another bootarchive for same BE)?
         ### Each choice has it pro's and con's, so it is up to the user.
         ### Note that some versions of the illumos bootloader may become
-        ### unhappy when there are too many individual BE's around.
+        ### unhappy when there are too many individual BE's around (maybe ~40).
+        ### Also user must take care to sync the kernel and boot-archives.
         ### === FIREFLY_CONTAINER_SRC :
         ### A slightly different choice: if a "firefly" archive is available in
         ### the main OS BE, should we look for an ISO and a Firefly BE at all?
