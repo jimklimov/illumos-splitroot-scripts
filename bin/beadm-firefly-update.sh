@@ -3,7 +3,7 @@
 ### Keep the Firefly failsafe image for illumos up-to-date
 ### See https://www.blogger.com/comment.g?blogID=3094974977265128267&postID=6716498883875252619
 ### and https://github.com/jimklimov/illumos-splitroot-scripts
-### Script Copyright (C) 2014-2015 by Jim Klimov
+### Script Copyright (C) 2014-2015 by Jim Klimov, License: CDDL
 ### Firefly Copyright (C) by Alex Eremin aka "alhazred"
 
 ### NOTE: This is an experimental work in progress. This script does function,
