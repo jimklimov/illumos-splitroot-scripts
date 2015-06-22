@@ -1,36 +1,134 @@
 United patch for the three filesystem methods to support split-rooting
 See http://wiki.openindiana.org/oi/Advanced+-+Split-root+installation
+and https://github.com/jimklimov/illumos-splitroot-scripts
 Copyright (C) 2013-2015 by Jim Klimov, License: CDDL
 
---- /lib/svc/method/fs-root.orig-oi_151a8	2013-07-21 16:35:53.000000000 +0200
-+++ /lib/svc/method/fs-root	2013-11-30 04:16:23.733195299 +0100
-@@ -73,6 +73,7 @@
- # system.
- #
- readvfstab "/usr" < $vfstab
-+mounted /usr - - < /etc/mnttab || \
- if [ -n "$mountp" ]; then
- 	if [ "$fstype" = cachefs ]; then
- 		#
-@@ -151,6 +152,7 @@
- 	# if mountp = /usr, there is a non-legacy mount of /usr
- 	# in the boot environment being booted.
+--- /lib/svc/method/fs-root.orig-oi_151a9	2012-10-19 23:23:20.388367336 +0200
++++ /lib/svc/method/fs-root	2015-06-22 21:51:03.238544681 +0200
+@@ -26,6 +26,12 @@
+ # Make sure that the libraries essential to this stage of booting can be found.
+ LD_LIBRARY_PATH=/lib; export LD_LIBRARY_PATH
+ 
++NET_PHYS_FMRI="svc:/network/physical:default"
++NET_NWAM_FMRI="svc:/network/physical:nwam"
++NET_IPTUN_FMRI="svc:/network/iptun:default"
++SVCADM=/usr/sbin/svcadm
++SVCS=/usr/bin/svcs
++
+ libc_mount() {
  	#
-+	mounted /usr - zfs < /etc/mnttab || \
- 	if [ "x$mountp" = "x/usr" ] ; then
- 		/sbin/zfs mount $special/usr
- 		if [ $? != 0 ] ; then
---- /lib/svc/method/fs-minimal.orig-oi_151a8	2013-07-21 16:35:53.000000000 +0200
-+++ /lib/svc/method/fs-minimal	2013-11-30 04:15:40.458600293 +0100
-@@ -57,6 +57,7 @@
+ 	# If there is an optimized libc available in /usr that fits this
+@@ -231,6 +237,19 @@
+ #
+ /usr/sbin/devfsadm -I -P
+ 
++#
++# After possibly finding new drivers, and after getting an /usr, redo network
++#
++for _SVC in $NET_PHYS_FMRI $NET_NWAM_FMRI $NET_IPTUN_FMRI; do
++	_STATE="`$SVCS -H -o state $_SVC`"
++	echo "$_SVC: $_STATE" > /dev/msglog
++	case "$_STATE" in
++	    online*)	$SVCADM restart $_SVC ;;
++	    maintenance)$SVCADM clear $_SVC ;;
++	esac
++done
++unset _SVC _STATE
++
+ libc_mount
+ 
+ exit $SMF_EXIT_OK
+--- /lib/svc/method/fs-minimal.orig-oi_151a9	2011-09-12 13:04:00.000000000 +0200
++++ /lib/svc/method/fs-minimal	2012-09-26 23:43:07.333776279 +0200
+@@ -31,6 +31,10 @@
+ . /lib/svc/share/smf_include.sh
+ . /lib/svc/share/fs_include.sh
+ 
++# Report selected mounts to /dev/console
++debug_mnt=0
++[ -f /.debug_mnt ] && debug_mnt=1
++
+ # Mount other file systems to be available in single user mode.
+ # Currently, these are /var, /var/adm, /var/run and /tmp.  A change
+ # here will require a modification to the following programs (and
+@@ -49,6 +53,7 @@
+ 	if [ -n "$mountp" ]; then
+ 		mounted $mountp $mntopts $fstype < /etc/mnttab && continue
+ 		checkfs $fsckdev $fstype $mountp || exit $SMF_EXIT_ERR_FATAL
++		[ x"$debug_mnt" = x1 ] && echo "Mounting '$fs': use '$mountp' of type '$fstype' with opts '$mntopts' from vfstab" > /dev/console
+ 		mountfs -O $mountp $fstype $mntopts - ||
+ 		    exit $SMF_EXIT_ERR_FATAL
+ 		continue
+@@ -57,10 +62,50 @@
  		mountpt=`zfs get -H -o value mountpoint $be$fs 2>/dev/null`
  		if [ $? = 0 ] ; then
  			if [ "x$mountpt" = "x$fs" ] ; then
-+				mounted $mountpt - zfs < /etc/mnttab || \
++				[ x"$debug_mnt" = x1 ] && echo "Mounting '$fs': use '$be$fs': in same root hierarchy" > /dev/console
  				/sbin/zfs mount -O $be$fs
++				continue
  			fi
  		fi
---- /lib/svc/method/fs-root-zfs.orig-oi_151a8	1970-01-01 01:00:00.000000000 +0100
+-	fi
++		# These mountpoints can be shared among BEs in a separate tree.
++		# Find and mount matching automountable datasets; if there is
++		# choice - prefer the (first found?) one in the current rpool.
++		mountdslist="`zfs list -H -o canmount,mountpoint,name | awk '( $1 == "on" && $2 == "'"$fs"'" ) {print $3}' 2>/dev/null`"
++		if [ $? = 0 -a "x$mountdslist" != x ] ; then
++			if [ "x`echo "$mountdslist"|wc -l|sed 's/ //g'`" = x1 ]; then
++				# We only had one hit
++				[ x"$debug_mnt" = x1 ] && echo "Mounting '$fs': use '$mountdslist': the only option" > /dev/console
++				/sbin/zfs mount -O "$mountdslist"
++				continue
++			else
++				rpoolname="`echo "$be" | awk -F/ '{print $1}'`"
++			        mountdspref="`echo "$mountdslist" | egrep '^'"$rpoolname/" | head -1`"
++				if [ $? = 0 -a "x$mountdspref" != x ] ; then
++					[ x"$debug_mnt" = x1 ] && echo "Mounting '$fs': use '$mountdspref': same rpool" > /dev/console
++					/sbin/zfs mount -O "$mountdspref"
++					continue
++				fi
++				# This is the least-definite situation: several
++			        # matching datasets exist, and none on the current
++				# rpool. See if any pools can be ruled out due to
++			        # bad (non-default) altroots.
++				for mountds in $mountdslist; do
++					dspool="`echo "$mountds" | awk -F/ '{print $1}'`"
++					dspool_altroot="`zpool list -H -o altroot "$dspool"`"
++					if [ $? = 0 -a \
++					     x"$dspool_altroot" = "x-" -o \
++					     x"$dspool_altroot" = "x/" ]; then
++						[ x"$debug_mnt" = x1 ] && echo "Mounting '$fs': use '$mountds': good altroot" > /dev/console
++					        /sbin/zfs mount -O "$mountds"
++						continue
++					fi
++				    done
++				fi
++		fi
++		# Technically, it is possible to have a pool named var with
++		# the default altroot and a dataset "var/adm" with an inherited
++		# mountpoint, which should automount into "/var/adm". TBD...
++	fi  ### if root is ZFS
+ done
+ 
+ mounted /var/run - tmpfs < /etc/mnttab
+@@ -73,10 +118,16 @@
+ fi
+ 
+ if [ "$rootiszfs" = 1 ] ; then
++	_SKIP=0
++	# Mount (other) possible children of current rootfs dataset
+ 	/sbin/zfs list -rH -o mountpoint -s mountpoint -t filesystem $be | \
+ 	    while read mountp ; do
++		# Skip the rootfs itself regardless of its mountpoint name
++		[ "$_SKIP" = 0 ] && _SKIP=1 && continue
++
+ 		if [ "x$mountp" != "x" -a "$mountp" != "legacy" ] ; then
+ 			mounted $mountp - zfs < /etc/mnttab  && continue
++			[ x"$debug_mnt" = x1 ] && echo "Mounting '$mountp': use '$be$mountp': in same root hierarchy" > /dev/console
+ 			/sbin/zfs mount $be$mountp
+ 		fi
+ 	done
+--- /lib/svc/method/fs-root-zfs.orig-oi_151a9	1970-01-01 01:00:00.000000000 +0100
 +++ /lib/svc/method/fs-root-zfs	2013-11-30 04:31:04.263795334 +0100
 @@ -0,0 +1,449 @@
 +#!/sbin/sh
@@ -482,3 +580,22 @@ Copyright (C) 2013-2015 by Jim Klimov, License: CDDL
 +
 +decho "fs-root-zfs: completed without fatal errors"
 +exit $SMF_EXIT_OK
+--- /lib/svc/method/fs-usr.orig-oi_151a9	2012-07-01 00:42:21.000000000 +0200
++++ /lib/svc/method/fs-usr	2012-09-25 23:53:09.699628296 +0200
+@@ -54,8 +54,14 @@
+ 	# If we have a dedicated dump device, then go ahead and configure it.
+ 	# 
+ 	if [ "x$special" != "x$DUMPADM_DEVICE" ]; then
+-		if [ -x /usr/sbin/dumpadm -a -b $DUMPADM_DEVICE ]; then
+-			/usr/sbin/dumpadm -u || exit $SMF_EXIT_ERR_CONFIG
++		if [ -x /usr/sbin/dumpadm ]; then
++			if [ -b $DUMPADM_DEVICE ]; then
++				/usr/sbin/dumpadm -u || \
++					exit $SMF_EXIT_ERR_CONFIG
++			fi
++		else
++			echo "WARN: /usr/sbin/dumpadm not found" >&2
++			return
+ 		fi
+ 	fi
+ }

@@ -31,6 +31,10 @@
 . /lib/svc/share/smf_include.sh
 . /lib/svc/share/fs_include.sh
 
+# Report selected mounts to /dev/console
+debug_mnt=0
+[ -f /.debug_mnt ] && debug_mnt=1
+
 # Mount other file systems to be available in single user mode.
 # Currently, these are /var, /var/adm, /var/run and /tmp.  A change
 # here will require a modification to the following programs (and
@@ -49,6 +53,7 @@ for fs in /var /var/adm /tmp; do
 	if [ -n "$mountp" ]; then
 		mounted $mountp $mntopts $fstype < /etc/mnttab && continue
 		checkfs $fsckdev $fstype $mountp || exit $SMF_EXIT_ERR_FATAL
+		[ x"$debug_mnt" = x1 ] && echo "Mounting '$fs': use '$mountp' of type '$fstype' with opts '$mntopts' from vfstab" > /dev/console
 		mountfs -O $mountp $fstype $mntopts - ||
 		    exit $SMF_EXIT_ERR_FATAL
 		continue
@@ -57,11 +62,50 @@ for fs in /var /var/adm /tmp; do
 		mountpt=`zfs get -H -o value mountpoint $be$fs 2>/dev/null`
 		if [ $? = 0 ] ; then
 			if [ "x$mountpt" = "x$fs" ] ; then
-				mounted $mountpt - zfs < /etc/mnttab || \
+				[ x"$debug_mnt" = x1 ] && echo "Mounting '$fs': use '$be$fs': in same root hierarchy" > /dev/console
 				/sbin/zfs mount -O $be$fs
+				continue
 			fi
 		fi
-	fi
+		# These mountpoints can be shared among BEs in a separate tree.
+		# Find and mount matching automountable datasets; if there is
+		# choice - prefer the (first found?) one in the current rpool.
+		mountdslist="`zfs list -H -o canmount,mountpoint,name | awk '( $1 == "on" && $2 == "'"$fs"'" ) {print $3}' 2>/dev/null`"
+		if [ $? = 0 -a "x$mountdslist" != x ] ; then
+			if [ "x`echo "$mountdslist"|wc -l|sed 's/ //g'`" = x1 ]; then
+				# We only had one hit
+				[ x"$debug_mnt" = x1 ] && echo "Mounting '$fs': use '$mountdslist': the only option" > /dev/console
+				/sbin/zfs mount -O "$mountdslist"
+				continue
+			else
+				rpoolname="`echo "$be" | awk -F/ '{print $1}'`"
+			        mountdspref="`echo "$mountdslist" | egrep '^'"$rpoolname/" | head -1`"
+				if [ $? = 0 -a "x$mountdspref" != x ] ; then
+					[ x"$debug_mnt" = x1 ] && echo "Mounting '$fs': use '$mountdspref': same rpool" > /dev/console
+					/sbin/zfs mount -O "$mountdspref"
+					continue
+				fi
+				# This is the least-definite situation: several
+			        # matching datasets exist, and none on the current
+				# rpool. See if any pools can be ruled out due to
+			        # bad (non-default) altroots.
+				for mountds in $mountdslist; do
+					dspool="`echo "$mountds" | awk -F/ '{print $1}'`"
+					dspool_altroot="`zpool list -H -o altroot "$dspool"`"
+					if [ $? = 0 -a \
+					     x"$dspool_altroot" = "x-" -o \
+					     x"$dspool_altroot" = "x/" ]; then
+						[ x"$debug_mnt" = x1 ] && echo "Mounting '$fs': use '$mountds': good altroot" > /dev/console
+					        /sbin/zfs mount -O "$mountds"
+						continue
+					fi
+				    done
+				fi
+		fi
+		# Technically, it is possible to have a pool named var with
+		# the default altroot and a dataset "var/adm" with an inherited
+		# mountpoint, which should automount into "/var/adm". TBD...
+	fi  ### if root is ZFS
 done
 
 mounted /var/run - tmpfs < /etc/mnttab
@@ -74,10 +118,16 @@ if [ ! -f /var/run/tzsync ] ; then
 fi
 
 if [ "$rootiszfs" = 1 ] ; then
+	_SKIP=0
+	# Mount (other) possible children of current rootfs dataset
 	/sbin/zfs list -rH -o mountpoint -s mountpoint -t filesystem $be | \
 	    while read mountp ; do
+		# Skip the rootfs itself regardless of its mountpoint name
+		[ "$_SKIP" = 0 ] && _SKIP=1 && continue
+
 		if [ "x$mountp" != "x" -a "$mountp" != "legacy" ] ; then
 			mounted $mountp - zfs < /etc/mnttab  && continue
+			[ x"$debug_mnt" = x1 ] && echo "Mounting '$mountp': use '$be$mountp': in same root hierarchy" > /dev/console
 			/sbin/zfs mount $be$mountp
 		fi
 	done

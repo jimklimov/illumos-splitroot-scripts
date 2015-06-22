@@ -53,6 +53,10 @@ libc_mount() {
 . /lib/svc/share/smf_include.sh
 . /lib/svc/share/fs_include.sh
 
+# Report selected mounts to /dev/console
+debug_mnt=0
+[ -f /.debug_mnt ] && debug_mnt=1
+
 #
 # Most of the operations in this script are only necessary in the global
 # zone but due to the way initialization scripts like this are packaged,
@@ -73,7 +77,6 @@ fi
 # system.
 #
 readvfstab "/usr" < $vfstab
-mounted /usr - - < /etc/mnttab || \
 if [ -n "$mountp" ]; then
 	if [ "$fstype" = cachefs ]; then
 		#
@@ -137,6 +140,8 @@ if [ -n "$mountp" ]; then
 			fi
 		fi
 
+		[ x"$debug_mnt" = x1 ] && fs=/usr \
+			echo "Mounting '$fs': use '$mountp' of type '$fstype' with opts '$mntopts' from vfstab" > /dev/console
 		mountfs -O /usr $fstype $mntopts - || exit $SMF_EXIT_ERR_FATAL
 	fi
 fi
@@ -147,21 +152,63 @@ fi
 
 readmnttab "/" < /etc/mnttab
 if [ "$fstype" = zfs ]; then
+	mountp_root=`/sbin/zfs get -H -o value mountpoint $special 2>/dev/null`
+	#
+	# Due to "beadm mount" or other mangling, current root fs may have
+	# a shifted mountpoint, i.e. "/a" with separated subdir datasets
+	# like usr becoming "/a/usr". We work around that below by trying
+	# to set the correct mountpoint upon boot.
+	#
+	if [ "x$mountp_root" != "x/" ]; then
+		[ x"$debug_mnt" = x1 ] && echo "Rootfs mountpoint not '/' but '$mountp_root', trying to fix." > /dev/console
+		/sbin/zfs set mountpoint=/ $special 2>/dev/null
+		# This might fail because rootds is busy... Will be cleaner
+		# on next boot. Now fix mountpoints of possible non-legacy
+		# non-inherited children of the current rootfs dataset:
+		/sbin/zfs list -rH -o name,mountpoint \
+		  -s mountpoint -t filesystem $special | grep $special/ | \
+			while read child_ds child_mountp ; do
+				child_rel="`echo "$child_ds" | sed 's,^'"$special",,`"
+				case "x$child_mountp" in
+				"x$mountp_root$child_rel"|"x/a/$child_rel"|x/tmp/tmp.*/"$child_rel")
+					[ x"$debug_mnt" = x1 ] && echo "Fixing '$child_ds' to use '$child_rel' mountpoint instead of '$child_mountp': in same root hierarchy" > /dev/console
+					/sbin/zfs set mountpoint="$child_rel" "$special/$child_rel" 2>/dev/null
+				;;
+				"x$child_rel")
+					[ x"$debug_mnt" = x1 ] && echo "No need to fix '$child_ds' to use '$child_rel' mountpoint instead of '$child_mountp': in same root hierarchy" > /dev/console
+				;;
+				*)
+					[ x"$debug_mnt" = x1 ] && echo "NOTE: not fixing '$child_ds' to use '$child_rel' mountpoint instead of '$child_mountp': in same root hierarchy" > /dev/console
+				;;
+				esac
+			done
+	fi
+
 	mountp=`/sbin/zfs get -H -o value mountpoint $special/usr 2>/dev/null`
 	#
 	# if mountp = /usr, there is a non-legacy mount of /usr
 	# in the boot environment being booted.
 	#
-	mounted /usr - zfs < /etc/mnttab || \
 	if [ "x$mountp" = "x/usr" ] ; then
-		/sbin/zfs mount $special/usr
-		if [ $? != 0 ] ; then
+		DS="`/sbin/mount | egrep '^/usr ' | while read _M _ON _DS _TAIL; do echo $_DS; done`"
+		if [ "x$DS" != x -a "x$DS" = "x$special/usr" ]; then
+			[ x"$debug_mnt" = x1 ] && echo "Already mounted: '$mountp' from '$special$mountp': in same root hierarchy" > /dev/console
+		else
+			[ x"$debug_mnt" = x1 ] && echo "Mounting '$mountp': use '$special$mountp': in same root hierarchy" > /dev/console
+			/sbin/zfs mount $special/usr
+			if [ $? != 0 ] ; then
 				msg='zfs-mount failed'
 				echo $msg
 				echo "$SMF_FMRI:" $msg >/dev/msglog
-		 	exit $SMF_EXIT_ERR_FATAL
+			 	exit $SMF_EXIT_ERR_FATAL
+			fi
 		fi
 	fi
+fi
+
+if [ ! -d /usr/bin ]; then
+	echo "FATAL: /usr does not seem to be properly mounted!"
+	#exit $SMF_EXIT_ERR_FATAL
 fi
 
 #
