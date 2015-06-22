@@ -206,7 +206,7 @@ do_reconfig() {
 do_firefly() {
     [ -x "`dirname "$0"`/beadm-firefly-update.sh" ] && \
     if [ $RES_PKGIPS -le 0 -a $RES_PKGSRC -le 0 -a $RES_BOOTADM -le 0 ] || \
-       [ -n "`set | grep FIREFLY`" ] \
+       [ -n "`set | grep FIREFLY_`" ] \
     ; then
         [ -z "$FIREFLY_CONTAINER_TGT" ] && \
                 FIREFLY_CONTAINER_TGT=integrated
