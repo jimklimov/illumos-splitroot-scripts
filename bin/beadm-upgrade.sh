@@ -164,7 +164,9 @@ do_upgrade_pkgips() {
           ### through to altroot upgrade attempt
           if /usr/bin/pkg -R "$BENEW_MNT" update --no-refresh --accept --deny-new-be --no-backup-be pkg; then \
             echo "===== Updating the image with new PKG software via chroot"
-            chroot "$BENEW_MNT" /usr/bin/pkg -R / image-update --no-refresh --accept --deny-new-be --no-backup-be
+            chroot "$BENEW_MNT" /usr/bin/pkg -R / image-update --no-refresh --accept --deny-new-be --no-backup-be || \
+            { echo "===== Updating the image with new PKG software via chroot with a special variable"
+              PKG_LIVE_ROOT=/// chroot "$BENEW_MNT" /usr/bin/pkg -R / image-update --no-refresh --accept --deny-new-be --no-backup-be; }
           else false; fi; } || \
 	{ echo "===== Updating the image with old PKG software via altroot"
           /usr/bin/pkg -R "$BENEW_MNT" image-update --no-refresh --accept --deny-new-be --no-backup-be; } || \
@@ -206,13 +208,13 @@ do_reconfig() {
 do_firefly() {
     [ -x "`dirname "$0"`/beadm-firefly-update.sh" ] && \
     if [ $RES_PKGIPS -le 0 -a $RES_PKGSRC -le 0 -a $RES_BOOTADM -le 0 ] || \
-       [ -n "`set | grep FIREFLY`" ] \
+       [ -n "`set | grep FIREFLY_`" ] \
     ; then
         [ -z "$FIREFLY_CONTAINER_TGT" ] && \
                 FIREFLY_CONTAINER_TGT=integrated
         export FIREFLY_CONTAINER_TGT BENEW BENEW_MPT CURRENT_BE CURRENT_RPOOL RPOOL RPOOL_ROOT RPOOLALT
-        echo "=== Trying to upgrade the Firefly Failsafe image (if available)" \
-                "in the new BE, since package updates succeeded there..."
+        echo "=== Will try to upgrade the Firefly Failsafe image (if available)" \
+                "in the new BE, since at least some package updates succeeded there..."
         "`dirname "$0"`/beadm-firefly-update.sh"
         RES_FIREFLY=$?
     fi
