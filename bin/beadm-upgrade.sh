@@ -162,12 +162,11 @@ do_upgrade_pkgips() {
           ### This clause should fail if no 'pkg' updates were available, or if a
           ### chrooted upgrade attempt with the new 'pkg' failed - both ways fall
           ### through to altroot upgrade attempt
-          if /usr/bin/pkg -R "$BENEW_MNT" update --no-refresh --accept --deny-new-be --no-backup-be pkg; then \
-            echo "===== Updating the image with new PKG software via chroot"
-            chroot "$BENEW_MNT" /usr/bin/pkg -R / image-update --no-refresh --accept --deny-new-be --no-backup-be || \
-            { echo "===== Updating the image with new PKG software via chroot with a special variable"
-              PKG_LIVE_ROOT=/// chroot "$BENEW_MNT" /usr/bin/pkg -R / image-update --no-refresh --accept --deny-new-be --no-backup-be; }
-          else false; fi; } || \
+          /usr/bin/pkg -R "$BENEW_MNT" update --no-refresh --accept --deny-new-be --no-backup-be pkg || true; } && \
+        { echo "===== Updating the image with new PKG software via chroot with a special variable"
+          PKG_LIVE_ROOT=/// chroot "$BENEW_MNT" /usr/bin/pkg -R / image-update --no-refresh --accept --deny-new-be --no-backup-be; } || \
+        { echo "===== Updating the image with new PKG software via chroot"
+          chroot "$BENEW_MNT" /usr/bin/pkg -R / image-update --no-refresh --accept --deny-new-be --no-backup-be; } || \
 	{ echo "===== Updating the image with old PKG software via altroot"
           /usr/bin/pkg -R "$BENEW_MNT" image-update --no-refresh --accept --deny-new-be --no-backup-be; } || \
 	{ echo "===== Updating the image with old PKG software via altroot and allowed refresh"
