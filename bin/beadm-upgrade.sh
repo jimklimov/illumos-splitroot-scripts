@@ -181,9 +181,9 @@ do_upgrade_pkgips() {
                         if /bin/df -k "/$BENEW_MNT/$ZR/root" | \
                             grep "ROOT/zbe" >/dev/null ; then
                                 { echo "===== Updating the image with new PKG software via chroot with a special variable in a local zone: $ZR"
-                                  PKG_LIVE_ROOT=/// chroot "$BENEW_MNT" /usr/bin/pkg -R /$ZR image-update --no-refresh --accept --deny-new-be --no-backup-be; } || \
+                                  PKG_LIVE_ROOT=/// chroot "$BENEW_MNT" /usr/bin/pkg -R /$ZR/root image-update --no-refresh --accept --deny-new-be --no-backup-be; } || \
                                 { echo "===== Updating the image with old PKG software via altroot in a local zone: $ZR"
-                                  /usr/bin/pkg -R "$BENEW_MNT/$ZR" image-update --no-refresh --accept --deny-new-be --no-backup-be; }
+                                  /usr/bin/pkg -R "$BENEW_MNT/$ZR/root" image-update --no-refresh --accept --deny-new-be --no-backup-be; }
                                 RES_PKGIPS=$?
                         fi
                 done
@@ -234,6 +234,7 @@ do_reconfig() {
 }
 
 do_firefly() {
+set -x
     [ -x "`dirname "$0"`/beadm-firefly-update.sh" ] && \
     if [ $RES_PKGIPS -le 0 -a $RES_PKGSRC -le 0 -a $RES_BOOTADM -le 0 ] || \
        [ -n "`set | grep FIREFLY_`" ] \
@@ -246,6 +247,7 @@ do_firefly() {
         "`dirname "$0"`/beadm-firefly-update.sh"
         RES_FIREFLY=$?
     fi
+set +x
 }
 
 do_upgrade() {
