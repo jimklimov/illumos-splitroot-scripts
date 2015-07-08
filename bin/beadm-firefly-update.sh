@@ -23,13 +23,33 @@
 ### dormant little-used filesystems (dedicated to failsafe) tend to suffer less
 ### from random system events that might impact a production RW root dataset.
 
+echotag() {
+        TAG="$1"; shift
+        [ -z "$*" ] && echo "" || echo "$TAG: $*"
+}
+
 die() {
         [ $# != 0 ] && echo "" >&2
-        while [ $# != 0 ]; do echo "$1"; shift; done >&2
+        while [ $# != 0 ]; do echotag "ERROR" "$1"; shift; done >&2
         echo "" >&2
         echo "FATAL ERROR occurred, bailing out (see details above," \
                 "please clean up accordingly after inspecting the wreckage)" >&2
         exit 1
+}
+
+logmsg_info() {
+        while [ $# -gt 0 ]; do echotag "INFO" "$1"; shift; done
+        return 0
+}
+
+logmsg_note() {
+        while [ $# -gt 0 ]; do echotag "NOTE" "$1"; shift; done
+        return 0
+}
+
+logmsg_warn() {
+        while [ $# -gt 0 ]; do echotag "WARN" "$1"; shift; done >&2
+        return 0
 }
 
 uuid() {
@@ -75,7 +95,7 @@ initialize_envvars_beadm_firefly() {
         export BENEW BENEW_MPT
         if [ -n "$BENEW" ] && [ "$BENEW" != "$CURRENT_BE" ]; then
                 ### For this script, an alternate BE must already be installed
-                echo "INFO: Validating alternate BENEW='$BENEW'..."
+                logmsg_info "Validating alternate BENEW='$BENEW'..."
                 beadm list "$BENEW" || die
 
                 ### See if it is already mounted?
@@ -93,7 +113,7 @@ initialize_envvars_beadm_firefly() {
                         if [ -n "$BENEW_MPT_CUR" ] && \
                            [ x"$BENEW_MPT_CUR" != x"-" ] \
                         ; then
-                                echo "BENEW is already mounted at '$BENEW_MPT_CUR', using that..."
+                                logmsg_note "BENEW '$BENEW' is already mounted at '$BENEW_MPT_CUR', using that..."
                                 BENEW_MPT="$BENEW_MPT_CUR"
                         else
                                 [ -z "$BENEW_MPT" ] && \
@@ -106,10 +126,10 @@ initialize_envvars_beadm_firefly() {
                                         _BEADM_CLONE_INFORM=no _BEADM_CLONE=no . "`dirname $0`/beadm-clone.sh"
 
                                 if [ -x "`dirname "$0"`/beadm-mount.sh" ] ; then
-                                        echo "Using '`dirname "$0"`/beadm-mount.sh' to ensure that BENEW='$BENEW' is mounted"
+                                        logmsg_note "Using '`dirname "$0"`/beadm-mount.sh' to ensure that BENEW='$BENEW' is mounted"
                                         "`dirname "$0"`/beadm-mount.sh" || die
                                 else
-                                        echo "Got a BENEW='$BENEW' with invalid BENEW_MPT='$BENEW_MPT' and got no 'beadm-mount.sh' - trying common 'beadm mount'"
+                                        logmsg_note "Got a BENEW='$BENEW' with invalid BENEW_MPT='$BENEW_MPT' and got no 'beadm-mount.sh' - trying common 'beadm mount'"
                                         ### Even with split-root installations, system
                                         ### stuff is in (or childed under) the rootfs,
                                         ### so a common "beadm mount" should suffice.
@@ -120,10 +140,10 @@ initialize_envvars_beadm_firefly() {
                 if [ -n "$BENEW_MPT" ] && \
                    [ -d "$BENEW_MPT/platform/i86pc/amd64" ] \
                 ; then
-                        echo "Got valid BENEW='$BENEW' and BENEW_MPT='$BENEW_MPT' for ABE-based failsafe installation"
+                        logmsg_note "Got valid BENEW='$BENEW' and BENEW_MPT='$BENEW_MPT' for ABE-based failsafe installation"
                         case "$BENEW_MPT" in
                                 /tmp/ff-*) ;;
-                                *) echo "NOTE: This script will not unmount/clean it up when finished!" ;;
+                                *) logmsg_note "This script will not unmount/clean it up when finished!" ;;
                         esac
                 else
                         [ -n "$BENEW" ] && \
@@ -185,7 +205,7 @@ initialize_envvars_beadm_firefly() {
                         fi
                         [ -n "$FIREFLY_CONTAINER_SRCAR" ] && \
                         [ ! -s "$FIREFLY_CONTAINER_SRCAR" ] && \
-                                echo "NOTE: FIREFLY_CONTAINER_SRC='$FIREFLY_CONTAINER_SRC' but '$FIREFLY_CONTAINER_SRCAR' file is absent at the moment"
+                                logmsg_note "FIREFLY_CONTAINER_SRC='$FIREFLY_CONTAINER_SRC' but '$FIREFLY_CONTAINER_SRCAR' file is absent at the moment"
                         ;;
                 *)      if [ -n "$FIREFLY_CONTAINER_SRCAR" ] ; then
                                 FIREFLY_CONTAINER_SRC="integrated"
@@ -214,9 +234,9 @@ initialize_envvars_beadm_firefly() {
                 if [ -n "$FIREFLY_CONTAINER_SRCBE" ]; then
                         if [ "$FIREFLY_CONTAINER_SRC" = "auto" ]; then
                                 FIREFLY_CONTAINER_SRC=standalone
-                                echo "NOTE: Since FIREFLY_CONTAINER_SRC was not provided by caller, '$FIREFLY_CONTAINER_SRC' mode was chosen automatically"
+                                logmsg_note "Since FIREFLY_CONTAINER_SRC was not provided by caller, '$FIREFLY_CONTAINER_SRC' mode was chosen automatically"
                         fi
-                        echo "NOTE: Using FIREFLY_CONTAINER_SRCBE='$FIREFLY_CONTAINER_SRCBE' as the assumed source BE dedicated to Firefly Failsafe"
+                        logmsg_note "Using FIREFLY_CONTAINER_SRCBE='$FIREFLY_CONTAINER_SRCBE' as the assumed source BE dedicated to Firefly Failsafe"
                         FIREFLY_CONTAINER_SRCAR="$FIREFLY_BEOLD_MPT/platform/i86pc/amd64/firefly"
                 fi
         fi
@@ -238,17 +258,22 @@ initialize_envvars_beadm_firefly() {
                         FIREFLY_CONTAINER_SRCAR=""
                         FIREFLY_CONTAINER_SRC="standalone"
                 fi
-                echo "NOTE: Since FIREFLY_CONTAINER_SRC was not provided by caller, '$FIREFLY_CONTAINER_SRC' mode was chosen automatically"
+                logmsg_note "Since FIREFLY_CONTAINER_SRC was not provided by caller," \
+                        "the '$FIREFLY_CONTAINER_SRC' mode was chosen automatically"
         fi
 
         case x"$FIREFLY_CONTAINER_TGT" in
                 x"standalone"|x"integrated") ;;
                 *)      if [ -s "$BENEW_MPT/platform/i86pc/amd64/firefly" ]; then
                                 FIREFLY_CONTAINER_TGT="integrated"
-                                echo "NOTE: Since FIREFLY_CONTAINER_TGT was not provided by caller, '$FIREFLY_CONTAINER_TGT' mode was chosen automatically because there is a '$BENEW_MPT/platform/i86pc/amd64/firefly' image"
+                                logmsg_note "Since FIREFLY_CONTAINER_TGT was not provided by caller," \
+                                        "the '$FIREFLY_CONTAINER_TGT' mode was chosen automatically" \
+                                        "because there is a '$BENEW_MPT/platform/i86pc/amd64/firefly' image"
                         else
                                 FIREFLY_CONTAINER_TGT="$FIREFLY_CONTAINER_SRC"
-                                echo "NOTE: Since FIREFLY_CONTAINER_TGT was not provided by caller, '$FIREFLY_CONTAINER_TGT' mode was chosen automatically to match FIREFLY_CONTAINER_SRC"
+                                logmsg_note "Since FIREFLY_CONTAINER_TGT was not provided by caller," \
+                                        "the '$FIREFLY_CONTAINER_TGT' mode was chosen automatically" \
+                                        "to match FIREFLY_CONTAINER_SRC"
                         fi
                         ;;
         esac
@@ -257,8 +282,9 @@ initialize_envvars_beadm_firefly() {
            [ -s "$FIREFLY_CONTAINER_SRCAR" -o \
              -n "$FIREFLY_CONTAINER_SRCBE" ] \
         ; then
-                echo "NOTE: We have the source archive we want ($FIREFLY_CONTAINER_SRCAR),"
-                echo "either directly or (assumed) as part of an existing dedicated BE ($FIREFLY_CONTAINER_SRCBE)"
+                logmsg_note "We have the source archive we want ($FIREFLY_CONTAINER_SRCAR)," \
+                        "either directly or (assumed) as part of an existing dedicated BE" \
+                        "($FIREFLY_CONTAINER_SRCBE)"
                 ### Currently FIREFLY_BEOLD doubles as the base (downloaded)
                 ### version name used in other parts of the code
                 if [ -z "$FIREFLY_BEOLD" ] ; then
@@ -272,8 +298,8 @@ initialize_envvars_beadm_firefly() {
 
                         [ -z "$FIREFLY_BEOLD" ] && \
                                 FIREFLY_BEOLD="firefly_0000" && \
-                                echo "INFO: Falling back to fake downloaded version of the source firefly bootarchive image as '$FIREFLY_BEOLD'" || \
-                                echo "INFO: Decided that the source firefly bootarchive image is based on downloaded version '$FIREFLY_BEOLD'"
+                                logmsg_info "Falling back to fake downloaded version of the source firefly bootarchive image as '$FIREFLY_BEOLD'" || \
+                                logmsg_info "Decided that the source firefly bootarchive image is based on downloaded version '$FIREFLY_BEOLD'"
                 fi
         else
                 ### Some variables to get the archive are needed...
@@ -351,16 +377,16 @@ beadm_create_raw_finish() {
         ### Creates a BE "$1": more work if it is done and populated well
         ### Adds a GRUB comment in $2
         zfs set org.opensolaris.libbe:uuid="`uuid`" "$RPOOL_ROOT/$1" \
-        || echo "WARNING: Failed to set (optional) libbe uuid on '$RPOOL_ROOT/$1'"
+        || logmsg_warn "Failed to set (optional) libbe uuid on '$RPOOL_ROOT/$1'"
 
         if [ -s "$GRUB_MENU" ]; then
                 FIREFLY_MENU_TITLE="FireFly FailSafe Recovery $1 $2 amd64"
                 if egrep "^bootfs $RPOOL_ROOT/$1\$" \
                     "$GRUB_MENU" > /dev/null; then
-                        echo "NOTE: Not adding GRUB menu entry into '$GRUB_MENU':" \
+                        logmsg_note "Not adding GRUB menu entry into '$GRUB_MENU':" \
                              "'bootfs $RPOOL_ROOT/$1' line is already present there"
                 else
-                        echo "Adding GRUB menu entry to use and to clone with 'beadm -e' later into '$GRUB_MENU'"
+                        logmsg_info "Adding GRUB menu entry to use and to clone with 'beadm -e' later into '$GRUB_MENU'"
                         echo "title $FIREFLY_MENU_TITLE
 bootfs $RPOOL_ROOT/$1
 kernel /platform/i86pc/kernel/amd64/unix
@@ -368,7 +394,7 @@ module /platform/i86pc/amd64/firefly
 #============ End of LIBBE entry =============" >> "$GRUB_MENU"
                 fi
         else
-                echo "WARNING: Grub menu file not found at '$GRUB_MENU'"
+                logmsg_warn "Grub menu file not found at '$GRUB_MENU'"
         fi
         return 0
 }
@@ -403,7 +429,7 @@ firefly_integrated_addgrub() {
         ### $4 = module (relative to bootfs! exercise for the caller!)
         ### $5 = optional base version of the firefly image (original download)
         [ -z "$1" -o -z "$2" -o -z "$3" -o -z "$4" ] && \
-                echo "WARNING: firefly_integrated_addgrub() called with invalid params '$@'" >&2 && \
+                logmsg_warn "firefly_integrated_addgrub() called with invalid params '$@'" >&2 && \
                 return 1        ### Not fatal
         [ "$1" = src ] && [ "$FIREFLY_CONTAINER_SRC" != "integrated" ] && return 127
         [ "$1" = tgt ] && [ "$FIREFLY_CONTAINER_TGT" != "integrated" ] && return 127
@@ -446,11 +472,11 @@ firefly_integrated_addgrub() {
                         ENTRY_PRESENT=yes
 
                 if [ "$ENTRY_PRESENT" = yes ]; then
-                        echo "NOTE: Not adding GRUB menu entry into '$GRUB_MENU':" \
+                        logmsg_note "Not adding GRUB menu entry into '$GRUB_MENU':" \
                              "'bootfs $2' with 'module $4' already present there"
                         FIREFLY_MENU_TITLE="$_T"
                 else
-                        echo "Adding GRUB menu entry for failsafe integrated with '$2' into '$GRUB_MENU'"
+                        logmsg_info "Adding GRUB menu entry for failsafe integrated with '$2' into '$GRUB_MENU'"
                         FIREFLY_MENU_TITLE="`basename "$2"` failsafe (amd64${FFVERSUFFIX})"
                         echo "title $FIREFLY_MENU_TITLE
 bootfs $2
@@ -459,7 +485,7 @@ module $4
 #============ End of LIBBE entry =============" >> "$GRUB_MENU"
                 fi
         else
-                echo "WARNING: Grub menu file not found at '$GRUB_MENU'"
+                logmsg_warn "Grub menu file not found at '$GRUB_MENU'"
         fi
 }
 
@@ -485,7 +511,7 @@ firefly_src_integrated_populate() {
                 || die "Could not seed baseline Firefly image into '$FIREFLY_CONTAINER_SRCAR'"
                 echo "$FIREFLY_BASEVER" > "$FIREFLY_CONTAINER_SRCAR.version"
         else
-                echo "INFO: Using an existing FIREFLY_CONTAINER_SRCAR='$FIREFLY_CONTAINER_SRCAR' archive as source"
+                logmsg_info "Using an existing FIREFLY_CONTAINER_SRCAR='$FIREFLY_CONTAINER_SRCAR' archive as source"
         fi
 
         firefly_integrated_addgrub src \
@@ -506,7 +532,7 @@ firefly_tmpimg_unpack_from_beold() {
         [ -d "$FIREFLY_BEOLD_MPT" ] && ( cd "$FIREFLY_BEOLD_MPT" ) \
                 || die "Could not use FIREFLY_BEOLD_MPT='$FIREFLY_BEOLD_MPT'"
 
-        echo "Unpacking a Firefly image file from standalone BE '$FIREFLY_BEOLD'..."
+        logmsg_info "Unpacking a Firefly image file from standalone BE '$FIREFLY_BEOLD'..."
         ### Prepare a copy of the Firefly image for modifications
         mkdir -p "`dirname "$FIREFLY_ARCHIVE_FILE"`"
         gzcat "$FIREFLY_BEOLD_MPT"/platform/i86pc/amd64/firefly > "$FIREFLY_ARCHIVE_FILE" \
@@ -526,7 +552,7 @@ firefly_tmpimg_unpack_from_integrated() {
                 die "Firefly image file FIREFLY_CONTAINER_SRCAR='$FIREFLY_CONTAINER_SRCAR' not found"
         fi
 
-        echo "Unpacking an integrated Firefly image file '$FIREFLY_CONTAINER_SRCAR'..."
+        logmsg_info "Unpacking an integrated Firefly image file '$FIREFLY_CONTAINER_SRCAR'..."
         ### Prepare a copy of the Firefly image for modifications
         mkdir -p "`dirname "$FIREFLY_ARCHIVE_FILE"`"
         gzcat "$FIREFLY_CONTAINER_SRCAR" > "$FIREFLY_ARCHIVE_FILE" \
@@ -567,25 +593,26 @@ done
         [ $? = 0 ] && ( \
                 cd "$FIREFLY_ARCHIVE_MPT" && \
                 chmod +x update-kernel.sh && \
-                echo "INFO: Updating kernel bits in the temporary Firefly image file..." && \
+                logmsg_info "Updating kernel bits in the temporary Firefly image file..." && \
                 ALTROOT="$BENEW_MPT" ./update-kernel.sh \
         ) || die "Could not update kernel bits in the temporary Firefly image file"
 
         (       cd "$FIREFLY_ARCHIVE_MPT/bin" && \
                 ls -la sh | grep ksh93 >/dev/null && \
                 [ -x ./bash ] && \
-                echo "Fixing the default failsafe bin/sh shell to be BASH..." && \
+                logmsg_info "Fixing the default failsafe bin/sh shell to be BASH..." && \
                 { rm -f sh ; ln -s ./bash sh; }
         )
 
         (       cd "$FIREFLY_ARCHIVE_MPT/sbin" && \
                 ls -la sh | grep ksh93 >/dev/null && \
                 [ -x ../usr/bin/bash ] && \
-                echo "Fixing the default failsafe sbin/sh shell to be BASH..." && \
+                logmsg_info "Fixing the default failsafe sbin/sh shell to be BASH..." && \
                 { rm -f sh ; ln -s ../usr/bin/bash sh; }
         )
 
-        echo "INFO: Zeroing out unallocated space..."
+        logmsg_info "Zeroing out unallocated space (please ignore dmesg report that says" \
+            "'$FIREFLY_ARCHIVE_MPT: file system full')..."
         dd if=/dev/zero of="$FIREFLY_ARCHIVE_MPT/bigzero" >/dev/null 2>&1
         rm -f "$FIREFLY_ARCHIVE_MPT/bigzero"
 }
@@ -601,9 +628,9 @@ firefly_tmpimg_cleanup_mounts() {
 firefly_tmpimg_cleanup_files() {
         case "$BENEW_MPT" in
                 /tmp/ff-*)
-                        echo "INFO: Releasing alternate BENEW='$BENEW'"
+                        logmsg_info "Releasing alternate BENEW='$BENEW'"
                         if [ -x "`dirname "$0"`/beadm-umount.sh" ] ; then
-                                echo "Using '`dirname "$0"`/beadm-umount.sh' to ensure that BENEW='$BENEW' is unmounted"
+                                logmsg_note "Calling '`dirname "$0"`/beadm-umount.sh' to ensure that BENEW='$BENEW' is unmounted"
                                 "`dirname "$0"`/beadm-umount.sh"
                         fi
                         beadm umount "$BENEW" >/dev/null 2>&1
@@ -621,7 +648,7 @@ firefly_tmpimg_cleanup_files() {
 
 trap_cleanup() {
         _EXITCODE=$?
-        echo "Signal received, cleaning up as much as we can..."
+        logmsg_note "Signal received, cleaning up as much as we can and quitting (with code = $_EXITCODE)..."
         # Subprocess to catch die()s
         ( firefly_tmpimg_cleanup_mounts )
         ( firefly_tmpimg_cleanup_files )
@@ -629,7 +656,7 @@ trap_cleanup() {
 }
 
 firefly_tmpimg_recompress() {
-        echo "Recompressing the updated Firefly image file (gzip$GZIP_LEVEL)..."
+        logmsg_info "Recompressing the updated Firefly image file (gzip$GZIP_LEVEL)..."
         trap "trap_cleanup" 1 2 3 15
         gzip -c $GZIP_LEVEL < "$FIREFLY_ARCHIVE_FILE" > "$FIREFLY_ARCHIVE_FILE_COMPRESSED" \
                 || die "Could not recompress the Firefly image file"
@@ -647,7 +674,7 @@ firefly_tgt_standalone_create_mount() {
         ### want both options, their choice
         [ "$FIREFLY_CONTAINER_TGT" != "standalone" ] && return 127
 
-        echo "Clone and mount the new FireFly Failsafe BE dataset..."
+        logmsg_info "Clone and mount the new FireFly Failsafe BE dataset..."
         if beadm list "$FIREFLY_BENEW" ; then
                 die "A Firefly dataset FIREFLY_BENEW='$FIREFLY_BENEW' already exists" \
                     "If you do intend to replace its contents - kill it yourself with" \
@@ -659,8 +686,8 @@ firefly_tgt_standalone_create_mount() {
                     -d "$FIREFLY_MENU_TITLE" \
                     -e "$FIREFLY_BEOLD" "$FIREFLY_BENEW" \
                 ; then
-                        echo "WARN: Could not clone new Firefly dataset FIREFLY_BENEW='$FIREFLY_BENEW'"
-                        echo "FALLBACK: Trying to create a new BE '$FIREFLY_BENEW' from scratch..."
+                        logmsg_warn "Could not clone new Firefly dataset FIREFLY_BENEW='$FIREFLY_BENEW'"
+                        logmsg_info "FALLBACK: Trying to create a new BE '$FIREFLY_BENEW' from scratch..."
                         ### This dies if fails
                         beadm_create_raw_begin "$FIREFLY_BENEW" "$FIREFLY_BENEW_MPT" && \
                         beadm_create_raw_finish "$FIREFLY_BENEW" "(auto-updated from $FIREFLY_BEOLD)"
@@ -677,7 +704,7 @@ firefly_tgt_standalone_create_mount() {
 firefly_tgt_standalone_update_files() {
         [ "$FIREFLY_CONTAINER_TGT" != "standalone" ] && return 127
         firefly_tgt_standalone_create_mount || return $?
-        echo "Copying updated files into new FireFly Failsafe BE dataset..."
+        logmsg_info "Copying updated files into new FireFly Failsafe BE dataset..."
 
         ### Note that i386 32-bit kernels are not supported by current Firefly
         mkdir -p \
@@ -707,7 +734,7 @@ firefly_tgt_integrated_update_files() {
         ### See TODO[1]: Revise for ALTROOT (BENEW/BENEW_MPT) support later
         [ "$FIREFLY_CONTAINER_TGT" != "integrated" ] && return 127
 
-        echo "Copying updated files into main OS BE dataset..."
+        logmsg_info "Copying updated files into main OS BE dataset..."
         ### Note that i386 32-bit kernels are not supported by current Firefly
         ### TODO: Revise if this changes
         cp -pf "$FIREFLY_ARCHIVE_FILE_COMPRESSED" \
@@ -719,8 +746,8 @@ firefly_tgt_integrated_update_files() {
         fi
 
         [ -s "$BENEW_MPT"/platform/i86pc/amd64/firefly.version ] && \
-                echo "NOTE: Original version marked in '$BENEW_MPT/platform/i86pc/amd64/firefly.version' is '`cat "$BENEW_MPT"/platform/i86pc/amd64/firefly.version`'" || \
-                echo "WARN: Please record the original 'firefly_MMYY' version into '$BENEW_MPT/platform/i86pc/amd64/firefly.version'"
+                logmsg_note "Original version marked in '$BENEW_MPT/platform/i86pc/amd64/firefly.version' is '`cat "$BENEW_MPT"/platform/i86pc/amd64/firefly.version`'" || \
+                logmsg_warn "Please record the original 'firefly_MMYY' version into '$BENEW_MPT/platform/i86pc/amd64/firefly.version'"
 
         ls -lda "$BENEW_MPT"/platform/i86pc/amd64/firefly* \
                 "$BENEW_MPT"/platform/i86pc/kernel/amd64/unix \
@@ -754,7 +781,7 @@ firefly_tgt_integrated_update_files
 
 firefly_tmpimg_cleanup_files
 
-echo ""
-echo "If all went well above, you are ready to reboot into this updated Firefly"
-echo "(via manual selection of '$FIREFLY_MENU_TITLE' at boot)"
-echo "to recover just like the good old locally-installed failsafe image :)"
+logmsg_info "" \
+        "If all went well above, you are ready to reboot into this updated Firefly" \
+        "(via manual selection of '$FIREFLY_MENU_TITLE' at boot)" \
+        "to recover just like the good old locally-installed failsafe image :)"
