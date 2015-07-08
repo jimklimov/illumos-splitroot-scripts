@@ -157,21 +157,26 @@ do_upgrade_pkgips() {
 	/usr/bin/pkg -R "$BENEW_MNT" publisher
 
 	{ echo "===== Refreshing IPS package list"
-          /usr/bin/pkg -R "$BENEW_MNT" refresh; } && \
+          /usr/bin/pkg -R "$BENEW_MNT" refresh
+          RES_PKGIPS=$?; [ "$RES_PKGIPS" = 0 ] ; } && \
 	{ echo "===== Updating PKG software itself"
           ### This clause should fail if no 'pkg' updates were available, or if a
           ### chrooted upgrade attempt with the new 'pkg' failed - both ways fall
           ### through to altroot upgrade attempt
-          /usr/bin/pkg -R "$BENEW_MNT" update --no-refresh --accept --deny-new-be --no-backup-be pkg || true; } && \
+          /usr/bin/pkg -R "$BENEW_MNT" update --no-refresh --accept --deny-new-be --no-backup-be pkg
+          RES_PKGIPS=$?; [ "$RES_PKGIPS" = 0 ] || [ "$RES_PKGIPS" = 4 ] ; } && \
         { echo "===== Updating the image with new PKG software via chroot with a special variable"
-          PKG_LIVE_ROOT=/// chroot "$BENEW_MNT" /usr/bin/pkg -R / image-update --no-refresh --accept --deny-new-be --no-backup-be; } || \
+          PKG_LIVE_ROOT=/// chroot "$BENEW_MNT" /usr/bin/pkg -R / image-update --no-refresh --accept --deny-new-be --no-backup-be
+          RES_PKGIPS=$?; [ "$RES_PKGIPS" = 0 ] || [ "$RES_PKGIPS" = 4 ] ; } || \
         { echo "===== Updating the image with new PKG software via chroot"
-          chroot "$BENEW_MNT" /usr/bin/pkg -R / image-update --no-refresh --accept --deny-new-be --no-backup-be; } || \
+          chroot "$BENEW_MNT" /usr/bin/pkg -R / image-update --no-refresh --accept --deny-new-be --no-backup-be
+          RES_PKGIPS=$?; [ "$RES_PKGIPS" = 0 ] || [ "$RES_PKGIPS" = 4 ] ; } || \
 	{ echo "===== Updating the image with old PKG software via altroot"
-          /usr/bin/pkg -R "$BENEW_MNT" image-update --no-refresh --accept --deny-new-be --no-backup-be; } || \
+          /usr/bin/pkg -R "$BENEW_MNT" image-update --no-refresh --accept --deny-new-be --no-backup-be
+          RES_PKGIPS=$?; [ "$RES_PKGIPS" = 0 ] || [ "$RES_PKGIPS" = 4 ] ; } || \
 	{ echo "===== Updating the image with old PKG software via altroot and allowed refresh"
-          /usr/bin/pkg -R "$BENEW_MNT" image-update --accept --deny-new-be --no-backup-be; }
-	RES_PKGIPS=$?
+          /usr/bin/pkg -R "$BENEW_MNT" image-update --accept --deny-new-be --no-backup-be
+          RES_PKGIPS=$?; }
 
         if [ "$RES_PKGIPS" = 0 -o "$RES_PKGIPS" = 4 ]; then
                 # Had success or nothing to do in the GZ, try LZ's now
@@ -184,7 +189,14 @@ do_upgrade_pkgips() {
                                   PKG_LIVE_ROOT=/// chroot "$BENEW_MNT" /usr/bin/pkg -R /$ZR/root image-update --no-refresh --accept --deny-new-be --no-backup-be; } || \
                                 { echo "===== Updating the image with old PKG software via altroot in a local zone: $ZR"
                                   /usr/bin/pkg -R "$BENEW_MNT/$ZR/root" image-update --no-refresh --accept --deny-new-be --no-backup-be; }
-                                RES_PKGIPS=$?
+                                RES_PKGIPS_Z=$?
+                                case "$RES_PKGIPS_Z" in
+                                        0) [ "$RES_PKGIPS" = 0 -o \
+                                             "$RES_PKGIPS" = 4 ] && \
+                                                RES_PKGIPS=0;; # good news
+                                        4) ;; # ignore no zone news
+                                        *) RES_PKGIPS="$RES_PKGIPS_Z" ;; # bad
+                                esac
                         fi
                 done
         fi
