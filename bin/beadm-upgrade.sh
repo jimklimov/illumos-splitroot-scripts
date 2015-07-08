@@ -39,7 +39,7 @@ trap_exit_upgrade() {
 
     [ $RES_EXIT = 0 ] && RES_EXIT=126
     echo "=== FAILED, the upgrade was not completed successfully" \
-    	    "or found no new updates; you can remove the new BE with:" >&2
+        "or found no new updates (IPS==4); you can remove the new BE with:" >&2
     echo "	beadm destroy -Ffsv $BENEW " >&2
     exit $RES_EXIT
 }
