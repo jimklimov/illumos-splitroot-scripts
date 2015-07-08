@@ -185,10 +185,13 @@ do_upgrade_pkgips() {
                 while read ZR; do
                         if /bin/df -k "/$BENEW_MNT/$ZR/root" | \
                             grep "ROOT/zbe" >/dev/null ; then
+                                echo ""
                                 { echo "===== Updating the image with new PKG software via chroot with a special variable in a local zone: $ZR"
-                                  PKG_LIVE_ROOT=/// chroot "$BENEW_MNT" /usr/bin/pkg -R /$ZR/root image-update --no-refresh --accept --deny-new-be --no-backup-be; } || \
+                                  PKG_LIVE_ROOT=/// chroot "$BENEW_MNT" /usr/bin/pkg -R /$ZR/root image-update --no-refresh --accept --deny-new-be --no-backup-be
+                                  RES_PKGIPS_Z=$?; [ "$RES_PKGIPS_Z" = 0 ] || [ "$RES_PKGIPS_Z" = 4 ] ; } || \
                                 { echo "===== Updating the image with old PKG software via altroot in a local zone: $ZR"
-                                  /usr/bin/pkg -R "$BENEW_MNT/$ZR/root" image-update --no-refresh --accept --deny-new-be --no-backup-be; }
+                                  /usr/bin/pkg -R "$BENEW_MNT/$ZR/root" image-update --no-refresh --accept --deny-new-be --no-backup-be
+                                  RES_PKGIPS_Z=$?; }
                                 RES_PKGIPS_Z=$?
                                 case "$RES_PKGIPS_Z" in
                                         0) [ "$RES_PKGIPS" = 0 -o \
@@ -201,10 +204,12 @@ do_upgrade_pkgips() {
                 done
         fi
 
+        echo ""
         echo "===== Querying the version of osnet-incorporation for '$BENEW' in '$BENEW_MNT' (FYI)"
         /usr/bin/pkg -R "$BENEW_MNT" info osnet-incorporation
 
 	TS="`date -u "+%Y%m%dZ%H%M%S"`" && \
+            echo "===== Taking snapshots @postupgrade_pkgips-$TS ..." && \
 	    zfs snapshot -r "$RPOOL_SHARED@postupgrade_pkgips-$TS" && \
 	    zfs snapshot -r "$BENEW_DS@postupgrade_pkgips-$TS" && \
             chroot "$BENEW_MNT" /usr/sbin/zoneadm list -cp | \
@@ -233,6 +238,7 @@ do_upgrade_pkgsrc() {
 #	echo "===== Run PKGSRC orphan autoremoval..."
 #	chroot "$BENEW_MNT" /opt/local/bin/pkgin autoremove || RES_PKGSRC=$?
 	TS="`date -u "+%Y%m%dZ%H%M%S"`" && \
+            echo "===== Taking snapshots @postupgrade_pkgsrc-$TS ..." && \
 	    zfs snapshot -r "$RPOOL_SHARED@postupgrade_pkgsrc-$TS" && \
 	    zfs snapshot -r "$BENEW_DS@postupgrade_pkgsrc-$TS"
     fi
