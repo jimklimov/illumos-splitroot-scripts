@@ -173,16 +173,45 @@ do_upgrade_pkgips() {
           /usr/bin/pkg -R "$BENEW_MNT" image-update --accept --deny-new-be --no-backup-be; }
 	RES_PKGIPS=$?
 
+        if [ "$RES_PKGIPS" = 0 -o "$RES_PKGIPS" = 4 ]; then
+                # Had success or nothing to do in the GZ, try LZ's now
+                chroot "$BENEW_MNT" /usr/sbin/zoneadm list -cp | \
+                awk -F: '( $6 == "ipkg" && $2 != "global" ) { print $4}' | \
+                while read ZR; do
+                        if /bin/df -k "/$BENEW_MNT/$ZR/root" | \
+                            grep "ROOT/zbe" >/dev/null ; then
+                                { echo "===== Updating the image with new PKG software via chroot with a special variable in a local zone: $ZR"
+                                  PKG_LIVE_ROOT=/// chroot "$BENEW_MNT" /usr/bin/pkg -R /$ZR image-update --no-refresh --accept --deny-new-be --no-backup-be; } || \
+                                { echo "===== Updating the image with old PKG software via altroot in a local zone: $ZR"
+                                  /usr/bin/pkg -R "$BENEW_MNT/$ZR" image-update --no-refresh --accept --deny-new-be --no-backup-be; }
+                                RES_PKGIPS=$?
+                        fi
+                done
+        fi
+
         echo "===== Querying the version of osnet-incorporation for '$BENEW' in '$BENEW_MNT' (FYI)"
         /usr/bin/pkg -R "$BENEW_MNT" info osnet-incorporation
 
 	TS="`date -u "+%Y%m%dZ%H%M%S"`" && \
 	    zfs snapshot -r "$RPOOL_SHARED@postupgrade_pkgips-$TS" && \
-	    zfs snapshot -r "$BENEW_DS@postupgrade_pkgips-$TS"
+	    zfs snapshot -r "$BENEW_DS@postupgrade_pkgips-$TS" && \
+            chroot "$BENEW_MNT" /usr/sbin/zoneadm list -cp | \
+            awk -F: '( $6 == "ipkg" && $2 != "global" ) { print $4}' | \
+            while read ZR; do
+                ### A zoneroot dataset contains a ZBE whose snapshot we want,
+                ### but also it can contain split-off userdata datasets which
+                ### we can also want. A dirty solution for now is to snapshot
+                ### zoneroot with all children (slight overkill for zbe-NN).
+                ZRDS="`/bin/df -k "/$BENEW_MNT/$ZR/root" | grep "ROOT/zbe" | awk '{print $1}' | sed 's,/ROOT/zbs.*$,,'`"
+                [ $? = 0 ] && [ -n "$ZRDS" ] && \
+                    zfs snapshot -r "$ZRDS@postupgrade_pkgips-$TS"
+            done
     fi
 }
 
 do_upgrade_pkgsrc() {
+        # TODO: PKGSRC upgrades in local zones (new ZBEs) as well
+        # (do not limit to ipkg zones however ;) )
     if [ -x "$BENEW_MNT"/opt/local/bin/pkgin ]; then
 	echo "=== Run PKGSRC upgrade..."
 	chroot "$BENEW_MNT" /opt/local/bin/pkgin update
