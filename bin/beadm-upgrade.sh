@@ -149,7 +149,13 @@ do_clone_umount() {
     [ -n "$BENEW_DS" ] && \
     echo "=== Resetting canmount=noauto and mountpoint=/ for $BENEW_DS" && \
     zfs set canmount=noauto "$BENEW_DS" && \
-    zfs set mountpoint=/ "$BENEW_DS"
+    zfs set mountpoint=/ "$BENEW_DS" && \
+    zfs list -t filesystem -Honame -r "$BENEW_DS" | grep "$BENEW_DS/" | sort | \
+    while read Z; do
+	echo "=== Resetting canmount=noauto and inheriting mountpoint for $Z" && \
+	zfs set canmount=noauto "$Z" && \
+	zfs inherit mountpoint "$Z"
+    done
 }
 
 do_upgrade_pkgips() {
