@@ -145,6 +145,11 @@ do_clone_umount() {
     echo "===== beadm-unmounting $BENEW ($BENEW_MNT)..."
     beadm umount "$BENEW_MNT" || \
     beadm umount "$BENEW"
+
+    [ -n "$BENEW_DS" ] && \
+    echo "=== Resetting canmount=noauto and mountpoint=/ for $BENEW_DS" && \
+    zfs set canmount=noauto "$BENEW_DS" && \
+    zfs set mountpoint=/ "$BENEW_DS"
 }
 
 do_upgrade_pkgips() {
