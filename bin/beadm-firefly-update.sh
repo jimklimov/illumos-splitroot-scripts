@@ -587,6 +587,14 @@ for D in `pwd`/kernel `pwd`/platform; do
    echo "=== No $RFP nor $RFK !"
   done
 done
+[ -s "./etc/path_to_inst.orig-ff" ] || \
+  cp -pf "./etc/path_to_inst" "./etc/path_to_inst.orig-ff"
+[ -s "./etc/path_to_inst.orig-ff" ] && \
+  echo "=== Original failsafe path_to_inst saved as ./etc/path_to_inst.orig-ff"
+[ -s "$ALTROOT/etc/path_to_inst" ] && \
+  cp -pf "$ALTROOT/etc/path_to_inst" ./etc/path_to_inst && \
+  echo "+++ Copied $ALTROOT/etc/path_to_inst into failsafe image" || \
+  cp -pf "./etc/path_to_inst.orig-ff" ./etc/path_to_inst
 ' > "$FIREFLY_ARCHIVE_MPT"/update-kernel.sh
 ####################
 
