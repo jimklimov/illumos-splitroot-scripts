@@ -27,20 +27,40 @@ trap_exit_upgrade() {
     /bin/df -k | awk '( $NF ~ "^'"$BENEW_MNT"'($|/)" ) { print $0 }'
     echo ""
 
+    if [ $RES_EXIT = 0 -a $BREAKOUT = n ] && \
+       [ $RES_PKGIPS -le 0 -o $RES_PKGIPS = 4 ] && \
+       [ $RES_PKGSRC -le 0 -a $RES_BOOTADM -le 0 ] \
+    ; then
+        do_clone_umount
+        [ $? = 0 -o $? = 185 ] && \
+        do_normalize_mountattrs
+    fi
+
+    echo "=== Done: PKGIPS=$RES_PKGIPS PKGSRC=$RES_PKGSRC BOOTADM=$RES_BOOTADM FIREFLY=$RES_FIREFLY"
+
     if [ $RES_EXIT = 0 -a $BREAKOUT = n -a \
-        $RES_PKGIPS -le 0 -a $RES_PKGSRC -le 0 -a $RES_BOOTADM -le 0 ] \
+        $RES_PKGSRC -le 0 -a $RES_BOOTADM -le 0 ] \
     ; then
         ### We do not care much about RES_FIREFLY now, which could fail
         ### for many reasons such as lack of the downloaded ISO image
-        echo "=== SUCCESS, you can now do:" >&2
-        echo "  beadm activate $BENEW    && init 6" >&2
-        exit 0
-    fi
+        if [ $RES_PKGIPS -le 0 ]; then
+            echo "=== SUCCESS, you can now do:"
+            echo "  beadm activate '$BENEW'    && init 6"
+            exit 0
+        fi
+        if [ $RES_PKGIPS = 4 ]; then
+            echo "=== NOT FAILED (but may have had nothing to upgrade though), you can now do:"
+            echo "  beadm activate '$BENEW'    && init 6"
+            echo "... or if you change your mind:"
+            echo "  beadm destroy -Ffsv '$BENEW'"
+            exit 0
+        fi
+    fi >&2
 
     [ $RES_EXIT = 0 ] && RES_EXIT=126
     echo "=== FAILED, the upgrade was not completed successfully" \
-        "or found no new updates (IPS==4); you can remove the new BE with:" >&2
-    echo "	beadm destroy -Ffsv $BENEW " >&2
+        "or maybe found no new updates; you can remove the new BE with:" >&2
+    echo "	beadm destroy -Ffsv '$BENEW' " >&2
     exit $RES_EXIT
 }
 
@@ -145,14 +165,21 @@ do_clone_umount() {
     echo "===== beadm-unmounting $BENEW ($BENEW_MNT)..."
     beadm umount "$BENEW_MNT" || \
     beadm umount "$BENEW"
+}
 
-    [ -n "$BENEW_DS" ] && \
-    echo "=== Resetting canmount=noauto and mountpoint=/ for $BENEW_DS" && \
+do_normalize_mountattrs() {
+    [ -z "$BENEW_DS" ] && \
+        echo "ERROR: do_normalize_mountattrs() BENEW_DS is not set" && \
+        return 1
+
+    echo "=== Normalizing canmount and mountpoint attributes..."
+
+    echo "===== Enforcing for $BENEW_DS"
     zfs set canmount=noauto "$BENEW_DS" && \
     zfs set mountpoint=/ "$BENEW_DS" && \
     zfs list -t filesystem -Honame -r "$BENEW_DS" | grep "$BENEW_DS/" | sort | \
     while read Z; do
-	echo "=== Resetting canmount=noauto and inheriting mountpoint for $Z" && \
+	echo "===== Inheriting for $Z" && \
 	zfs set canmount=noauto "$Z" && \
 	zfs inherit mountpoint "$Z"
     done
@@ -301,15 +328,8 @@ do_upgrade() {
     echo ""
     do_firefly
 
-    echo ""
-    do_clone_umount
+    # Unmounting and reporting is done as part of trapped exit()
 
-    echo ""
-    echo "=== Done: IPS=$RES_PKGIPS PKGSRC=$RES_PKGSRC BOOTADM=$RES_BOOTADM RES_FIREFLY=$RES_FIREFLY"
-    echo "=== If upgrade was acceptable and successful:"
-    echo ":; beadm activate '$BENEW'"
-    echo "=== If you change your mind or if it failed:"
-    echo ":; beadm destroy -Ffsv '$BENEW'"
 }
 
 trap "BREAKOUT=y; exit 127;" 1 2 3 15
@@ -317,18 +337,24 @@ trap "BREAKOUT=y; exit 127;" 1 2 3 15
 case "`basename $0`" in
     *upgrade*)
 		trap 'trap_exit_upgrade $?' 0
-		do_upgrade ;;
+		do_upgrade
+                ;;
     *umount*)	[ -z "$BENEW" ] && \
 		    echo "FATAL: BENEW not defined, nothing to unmount" && \
 		    exit 1
 		trap 'trap_exit_mount $?' 0
 		do_ensure_configs
-		do_clone_umount ;;
+		do_clone_umount
+		do_normalize_mountattrs
+                ;;
     *mount*)	[ -z "$BENEW" ] && \
 		    echo "FATAL: BENEW not defined, nothing to mount" && \
 		    exit 1
 		trap 'trap_exit_mount $?' 0
 		do_ensure_configs || exit
-		do_clone_mount ;;
-    *)		echo "FATAL: Command not determined"; exit 1 ;;
+		do_clone_mount
+                ;;
+    *)		echo "FATAL: Command not determined: $@"
+                exit 1
+                ;;
 esac
