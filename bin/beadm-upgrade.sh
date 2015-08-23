@@ -246,7 +246,7 @@ do_upgrade_pkgips() {
         echo "===== Querying the version of osnet-incorporation for '$BENEW' in '$BENEW_MNT' (FYI)"
         /usr/bin/pkg -R "$BENEW_MNT" info osnet-incorporation
 
-	TS="`date -u "+%Y%m%dZ%H%M%S"`" && \
+	TS="`date -u "+%Y%m%dT%H%M%SZ"`" && \
             echo "===== Taking snapshots @postupgrade_pkgips-$TS ..." && \
 	    zfs snapshot -r "$RPOOL_SHARED@postupgrade_pkgips-$TS" && \
 	    zfs snapshot -r "$BENEW_DS@postupgrade_pkgips-$TS" && \
@@ -275,7 +275,7 @@ do_upgrade_pkgsrc() {
 	RES_PKGSRC=$?
 #	echo "===== Run PKGSRC orphan autoremoval..."
 #	chroot "$BENEW_MNT" /opt/local/bin/pkgin autoremove || RES_PKGSRC=$?
-	TS="`date -u "+%Y%m%dZ%H%M%S"`" && \
+	TS="`date -u "+%Y%m%dT%H%M%SZ"`" && \
             echo "===== Taking snapshots @postupgrade_pkgsrc-$TS ..." && \
 	    zfs snapshot -r "$RPOOL_SHARED@postupgrade_pkgsrc-$TS" && \
 	    zfs snapshot -r "$BENEW_DS@postupgrade_pkgsrc-$TS"

@@ -14,7 +14,7 @@ CURRENT_RPOOL="`grep -w / /etc/mnttab | grep -w zfs | sed 's,^\([^\/]*\)/.*,\1,'
 
 [ x"$BEOLD" = x ] && BEOLD="$CURRENT_BE"
 [ x"$BENEW" = x ] && \
-    BENEW="`echo "$BEOLD" | sed 's/^\([^\-]*\)-.*$/\1/'`-`date -u '+%Y%m%dZ%H%M%S'`"
+    BENEW="`echo "$BEOLD" | sed 's/^\([^\-]*\)-.*$/\1/'`-`date -u '+%Y%m%dT%H%M%SZ'`"
 
 [ x"$RPOOL" = x ] && RPOOL="$CURRENT_RPOOL"
 [ x"$RPOOL" = x ] && RPOOL="rpool"
@@ -64,7 +64,7 @@ beadm_clone_attrs() {
 }
 
 beadm_clone_whatnext() {
-    TS="`date -u "+%Y%m%dZ%H%M%S"`"
+    TS="`date -u "+%Y%m%dT%H%M%SZ"`"
 
     cat << EOF
 
@@ -74,7 +74,7 @@ touch "$BENEW_MNT/reconfigure" && \
 bootadm update-archive -R "$BENEW_MNT" && \
 beadm umount "$BENEW"
 
-TS="\`date -u "+%Y%m%dZ%H%M%S"\`"
+TS="\`date -u "+%Y%m%dT%H%M%SZ"\`"
 zfs snapshot -r "$RPOOL_SHARED@postupgrade-\$TS"
 zfs snapshot -r "$BENEW_DS@postupgrade-\$TS"
 
