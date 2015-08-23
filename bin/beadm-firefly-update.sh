@@ -619,6 +619,9 @@ done ) && { \
                 { rm -f sh ; ln -s ../usr/bin/bash sh; }
         )
 
+	touch "$FIREFLY_ARCHIVE_MPT/reconfigure" && \
+	logmsg_info "Enabled 'reconfigure' during Firefly boot"
+
         logmsg_info "Zeroing out unallocated space (please ignore dmesg report" \
             "  that says '$FIREFLY_ARCHIVE_MPT: file system full')..."
         dd if=/dev/zero of="$FIREFLY_ARCHIVE_MPT/bigzero" >/dev/null 2>&1
