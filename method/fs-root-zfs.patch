@@ -3,8 +3,8 @@ See http://wiki.openindiana.org/oi/Advanced+-+Split-root+installation
 and https://github.com/jimklimov/illumos-splitroot-scripts
 Copyright (C) 2013-2015 by Jim Klimov, License: CDDL
 
---- /lib/svc/method/fs-root.orig-oi_151a9	2012-10-19 23:23:20.388367336 +0200
-+++ /lib/svc/method/fs-root	2015-06-22 21:51:03.238544681 +0200
+--- /lib/svc/method/fs-root.orig-oi-hipster-20150917    2015-09-17 16:51:13.776281274 +0200
++++ /lib/svc/method/fs-root     2015-09-18 09:21:19.234858110 +0200
 @@ -26,6 +26,12 @@
  # Make sure that the libraries essential to this stage of booting can be found.
  LD_LIBRARY_PATH=/lib; export LD_LIBRARY_PATH
@@ -18,10 +18,31 @@ Copyright (C) 2013-2015 by Jim Klimov, License: CDDL
  libc_mount() {
  	#
  	# If there is an optimized libc available in /usr that fits this
+@@ -76,7 +76,8 @@
+ readvfstab "/usr" < $vfstab
+ if [ -n "$mountp" ]; then
+ 	if [ "$fstype" = zfs ]; then
+-		mountfs - /usr $fstype $mntopts - || exit $SMF_EXIT_ERR_FATAL
++		mounted /usr - zfs < /etc/mnttab || \
++		{ mountfs - /usr $fstype $mntopts - || exit $SMF_EXIT_ERR_FATAL; }
+ 	else
+ 		#
+ 		# Must use -o largefiles here to ensure the
+@@ -127,7 +128,7 @@
+ 	# if mountp = /usr, there is a non-legacy mount of /usr
+ 	# in the boot environment being booted.
+ 	#
+-	if [ "x$mountp" = "x/usr" ] ; then
++	if [ "x$mountp" = "x/usr" ] && ! mounted /usr - zfs < /etc/mnttab ; then
+ 		/sbin/zfs mount $special/usr
+ 		if [ $? != 0 ] ; then
+ 				msg='zfs-mount failed'
 @@ -231,6 +237,19 @@
  #
  /usr/sbin/devfsadm -I -P
  
+ libc_mount
++
 +#
 +# After possibly finding new drivers, and after getting an /usr, redo network
 +#
@@ -34,8 +55,6 @@ Copyright (C) 2013-2015 by Jim Klimov, License: CDDL
 +	esac
 +done
 +unset _SVC _STATE
-+
- libc_mount
  
  exit $SMF_EXIT_OK
 --- /lib/svc/method/fs-minimal.orig-oi_151a9	2011-09-12 13:04:00.000000000 +0200

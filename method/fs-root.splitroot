@@ -28,6 +28,12 @@
 # Make sure that the libraries essential to this stage of booting can be found.
 LD_LIBRARY_PATH=/lib; export LD_LIBRARY_PATH
 
+NET_PHYS_FMRI="svc:/network/physical:default"
+NET_NWAM_FMRI="svc:/network/physical:nwam"
+NET_IPTUN_FMRI="svc:/network/iptun:default"
+SVCADM=/usr/sbin/svcadm
+SVCS=/usr/bin/svcs
+
 libc_mount() {
 	#
 	# If there is an optimized libc available in /usr that fits this
@@ -161,5 +167,18 @@ fi
 /usr/sbin/devfsadm -I -P
 
 libc_mount
+
+#
+# After possibly finding new drivers, and after getting an /usr, redo network
+#
+for _SVC in $NET_PHYS_FMRI $NET_NWAM_FMRI $NET_IPTUN_FMRI; do
+	_STATE="`$SVCS -H -o state $_SVC`"
+	echo "$_SVC: $_STATE" > /dev/msglog
+	case "$_STATE" in
+	    online*)    $SVCADM restart $_SVC ;;
+            maintenance)$SVCADM clear $_SVC ;;
+	esac
+done
+unset _SVC _STATE
 
 exit $SMF_EXIT_OK
