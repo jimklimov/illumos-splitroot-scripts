@@ -282,6 +282,8 @@ Copyright (C) 2013 by Jim Klimov, License: CDDL
  #
  /usr/sbin/devfsadm -I -P
  
+ libc_mount
+ 
 +#
 +# After possibly finding new drivers, and after getting an /usr, redo network
 +#
@@ -295,6 +297,4 @@ Copyright (C) 2013 by Jim Klimov, License: CDDL
 +done
 +unset _SVC _STATE
 +
- libc_mount
- 
  exit $SMF_EXIT_OK
