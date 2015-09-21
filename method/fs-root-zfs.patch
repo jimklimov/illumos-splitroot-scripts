@@ -5,7 +5,13 @@ Copyright (C) 2013-2015 by Jim Klimov, License: CDDL
 
 --- /lib/svc/method/fs-root.orig-oi-hipster-20150917    2015-09-17 16:51:13.776281274 +0200
 +++ /lib/svc/method/fs-root     2015-09-18 09:21:19.234858110 +0200
-@@ -26,6 +26,12 @@
+@@ -22,11 +22,18 @@
+ #
+ # Copyright (c) 1992, 2010, Oracle and/or its affiliates. All rights reserved.
+ # Copyright 2015 Nexenta Systems, Inc. All rights reserved.
++# Copyright (c) 2013-2015 by Jim Klimov
+ #
+ 
  # Make sure that the libraries essential to this stage of booting can be found.
  LD_LIBRARY_PATH=/lib; export LD_LIBRARY_PATH
  
@@ -37,12 +43,10 @@ Copyright (C) 2013-2015 by Jim Klimov, License: CDDL
  		/sbin/zfs mount $special/usr
  		if [ $? != 0 ] ; then
  				msg='zfs-mount failed'
-@@ -231,6 +237,19 @@
- #
- /usr/sbin/devfsadm -I -P
- 
+@@ -160,4 +168,17 @@
+
  libc_mount
-+
+ 
 +#
 +# After possibly finding new drivers, and after getting an /usr, redo network
 +#
@@ -55,7 +59,7 @@ Copyright (C) 2013-2015 by Jim Klimov, License: CDDL
 +	esac
 +done
 +unset _SVC _STATE
- 
++
  exit $SMF_EXIT_OK
 --- /lib/svc/method/fs-minimal.orig-oi_151a9	2011-09-12 13:04:00.000000000 +0200
 +++ /lib/svc/method/fs-minimal	2012-09-26 23:43:07.333776279 +0200
