@@ -17,6 +17,8 @@ RES_PKGIPS=-1
 RES_PKGSRC=-1
 RES_BOOTADM=-1
 RES_FIREFLY=-1
+RES_FS_METHODS=-1
+CHANGED_FS_METHODS=""
 BREAKOUT=n
 
 trap_exit_upgrade() {
@@ -36,7 +38,19 @@ trap_exit_upgrade() {
         do_normalize_mountattrs
     fi
 
-    echo "=== Done: PKGIPS=$RES_PKGIPS PKGSRC=$RES_PKGSRC BOOTADM=$RES_BOOTADM FIREFLY=$RES_FIREFLY"
+    echo "=== Done: PKGIPS=$RES_PKGIPS PKGSRC=$RES_PKGSRC BOOTADM=$RES_BOOTADM FIREFLY=$RES_FIREFLY RES_FS_METHODS=$RES_FS_METHODS"
+
+    if [ $RES_FS_METHODS -gt 0 ]; then
+        echo ""
+        echo "WARNING: $RES_FS_METHODS script(s) related to split-root support (certain filesystem"
+        echo "and networking methods) have changed! Please revise before rebooting!"
+        echo "  $CHANGED_FS_METHODS"
+        echo "Note that this is not a fatal condition by itself, but the newly made"
+        echo "rootfs can fail to mount cleanly if versions without split-root support"
+        echo "were installed while you do use this extended feature."
+        echo ""
+        sleep 10
+    fi >&2
 
     if [ $RES_EXIT = 0 -a $BREAKOUT = n -a \
         $RES_PKGSRC -le 0 -a $RES_BOOTADM -le 0 ] \
@@ -304,6 +318,19 @@ do_firefly() {
     fi
 }
 
+check_fs_methods() {
+    RES_FS_METHODS=0
+    for F in fs-root fs-minimal fs-usr fs-root-zfs net-iptun net-nwam net-physical ; do
+        diff "$BEOLD_MPT/lib/svc/method/$F" "$BENEW_MPT/lib/svc/method/$F" > /dev/null
+        if [ $? = 1 ]; then
+            # Files exist and are readable and do differ
+            RES_FS_METHODS=$(($RES_FS_METHODS+1))
+            CHANGED_FS_METHODS="/lib/svc/method/$F $CHANGED_FS_METHODS"
+            echo "WARNING: New BE has a different splitroot-related method: /lib/svc/method/$F" >&2
+        fi
+    done
+}
+
 do_upgrade() {
     do_ensure_configs || exit
     do_clone_mount || exit
@@ -327,6 +354,9 @@ do_upgrade() {
 
     echo ""
     do_firefly
+
+    echo ""
+    check_fs_methods
 
     # Unmounting and reporting is done as part of trapped exit()
 
