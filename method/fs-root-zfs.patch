@@ -124,8 +124,8 @@ Copyright (C) 2013-2015 by Jim Klimov, License: CDDL
 +					        /sbin/zfs mount -O "$mountds"
 +						continue
 +					fi
-+				    done
-+				fi
++				done
++			fi
 +		fi
 +		# Technically, it is possible to have a pool named var with
 +		# the default altroot and a dataset "var/adm" with an inherited

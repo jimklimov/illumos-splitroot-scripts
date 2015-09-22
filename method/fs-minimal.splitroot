@@ -99,8 +99,8 @@ for fs in /var /var/adm /tmp; do
 					        /sbin/zfs mount -O "$mountds"
 						continue
 					fi
-				    done
-				fi
+				done
+			fi
 		fi
 		# Technically, it is possible to have a pool named var with
 		# the default altroot and a dataset "var/adm" with an inherited
