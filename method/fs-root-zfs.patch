@@ -33,7 +33,7 @@ Copyright (C) 2013-2015 by Jim Klimov, License: CDDL
  		if [ $? != 0 ] ; then
  				msg='zfs-mount failed'
 --- /lib/svc/method/fs-minimal.orig-oi_151a9	2011-09-12 13:04:00.000000000 +0200
-+++ /lib/svc/method/fs-minimal	2012-09-26 23:43:07.333776279 +0200
++++ /lib/svc/method/fs-minimal	2015-09-29 16:35:07.333776279 +0200
 @@ -31,6 +31,10 @@
  . /lib/svc/share/smf_include.sh
  . /lib/svc/share/fs_include.sh
@@ -53,10 +53,11 @@ Copyright (C) 2013-2015 by Jim Klimov, License: CDDL
  		mountfs -O $mountp $fstype $mntopts - ||
  		    exit $SMF_EXIT_ERR_FATAL
  		continue
-@@ -57,10 +62,50 @@
+@@ -57,10 +62,51 @@
  		mountpt=`zfs get -H -o value mountpoint $be$fs 2>/dev/null`
  		if [ $? = 0 ] ; then
  			if [ "x$mountpt" = "x$fs" ] ; then
++				readmnttab $mountpt < /etc/mnttab && [ "x$fstype" = xzfs ] && [ "x$special" = "x$be$fs" ] && continue
 +				[ x"$debug_mnt" = x1 ] && echo "Mounting '$fs': use '$be$fs': in same root hierarchy" > /dev/console
  				/sbin/zfs mount -O $be$fs
 +				continue

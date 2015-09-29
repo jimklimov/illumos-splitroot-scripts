@@ -62,6 +62,7 @@ for fs in /var /var/adm /tmp; do
 		mountpt=`zfs get -H -o value mountpoint $be$fs 2>/dev/null`
 		if [ $? = 0 ] ; then
 			if [ "x$mountpt" = "x$fs" ] ; then
+				readmnttab $mountpt < /etc/mnttab && [ "x$fstype" = xzfs ] && [ "x$special" = "x$be$fs" ] && continue
 				[ x"$debug_mnt" = x1 ] && echo "Mounting '$fs': use '$be$fs': in same root hierarchy" > /dev/console
 				/sbin/zfs mount -O $be$fs
 				continue
