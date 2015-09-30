@@ -17,8 +17,15 @@ RES_PKGIPS=-1
 RES_PKGSRC=-1
 RES_BOOTADM=-1
 RES_FIREFLY=-1
+
+# Checks about changed SMF method scripts interesting to splitroot project
 RES_FS_METHODS=-1
 CHANGED_FS_METHODS=""
+
+# Checks about boot-menu length
+RES_BM_LENGTH=-1
+[ -n "$RES_BM_LENGTH_WARN" ] && [ "$RES_BM_LENGTH_WARN" -gt 1 ] || RES_BM_LENGTH_WARN=28
+
 BREAKOUT=n
 
 trap_exit_upgrade() {
@@ -32,6 +39,9 @@ trap_exit_upgrade() {
     check_fs_methods
     echo ""
 
+    check_bootmenu_length
+    echo ""
+
     if [ $RES_EXIT = 0 -a $BREAKOUT = n ] && \
        [ $RES_PKGIPS -le 0 -o $RES_PKGIPS = 4 ] && \
        [ $RES_PKGSRC -le 0 -a $RES_BOOTADM -le 0 ] \
@@ -41,7 +51,7 @@ trap_exit_upgrade() {
         do_normalize_mountattrs
     fi
 
-    echo "=== Done: PKGIPS=$RES_PKGIPS PKGSRC=$RES_PKGSRC BOOTADM=$RES_BOOTADM FIREFLY=$RES_FIREFLY RES_FS_METHODS=$RES_FS_METHODS"
+    echo "=== Done: PKGIPS=$RES_PKGIPS PKGSRC=$RES_PKGSRC BOOTADM=$RES_BOOTADM FIREFLY=$RES_FIREFLY RES_FS_METHODS=$RES_FS_METHODS RES_BM_LENGTH=$RES_BM_LENGTH"
 
     if [ $RES_FS_METHODS -gt 0 ]; then
         echo ""
@@ -51,6 +61,13 @@ trap_exit_upgrade() {
         echo "Note that this is not a fatal condition by itself, but the newly made"
         echo "rootfs can fail to mount cleanly if versions without split-root support"
         echo "were installed while you do use this extended feature."
+        echo ""
+        sleep 10
+    fi >&2
+
+    if [ $RES_BM_LENGTH -gt $RES_BM_LENGTH_WARN ]; then
+        echo ""
+        echo "WARNING: Your boot-menu has $RES_BM_LENGTH entries and might fail to boot due to GRUB bugs"
         echo ""
         sleep 10
     fi >&2
@@ -332,6 +349,34 @@ check_fs_methods() {
             echo "WARNING: New BE has a different splitroot-related method: /lib/svc/method/$F" >&2
         fi
     done
+}
+
+check_bootmenu_length() {
+    [ -z "$RPOOLALT" ] && \
+        ALTROOT_ARG="" || \
+        ALTROOT_ARG="-R $RPOOLALT"
+
+    GRUB_MENU_OUT="`LANG=C bootadm list-menu $ALTROOT_ARG`" || GRUB_MENU_OUT=""
+    GRUB_MENU_FILE=""
+
+    if [ -n "$GRUB_MENU_OUT" ]; then
+        GRUB_MENU_TITLES="`echo "$GRUB_MENU_OUT" | egrep -c '^[0-9]+ .*'`" && \
+            RES_BM_LENGTH="$GRUB_MENU_TITLES" && return 0
+
+        GRUB_MENU_FILE="`echo "$GRUB_MENU_OUT" | grep 'the location for the active GRUB menu is' | awk '{print $NF}'`" || \
+            GRUB_MENU_FILE=""
+    fi
+
+    [ -n "$GRUB_MENU_FILE" ] || \
+        GRUB_MENU_FILE="$RPOOLALT/$RPOOL/boot/grub/menu.lst"
+
+    if [ -s "$GRUB_MENU_FILE" ]; then
+        GRUB_MENU_TITLES="`egrep -c '^[ \t]*title ' "$GRUB_MENU_FILE"`" && \
+            RES_BM_LENGTH="$GRUB_MENU_TITLES" && return 0
+    fi
+
+    echo "WARNING: Could not determine length of the GRUB menu" >&2
+    return 1
 }
 
 do_upgrade() {
