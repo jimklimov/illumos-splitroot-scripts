@@ -356,7 +356,7 @@ initialize_envvars_beadm_firefly() {
                         ALTROOT_ARG="-R $RPOOLALT"
                 GRUB_MENU="`LANG=C bootadm list-menu $ALTROOT_ARG | grep 'the location for the active GRUB menu is' | awk '{print $NF}'`"
                 [ $? = 0 ] && [ -n "$GRUB_MENU" ] \
-                || GRUB_MENU="$RPOOLALT/rpool/boot/grub/menu.lst"
+                || GRUB_MENU="$RPOOLALT/$RPOOL/boot/grub/menu.lst"
         fi
         ### Stores the last created or existing matching menu entry, if any
         FIREFLY_MENU_TITLE=""
