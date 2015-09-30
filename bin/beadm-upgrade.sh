@@ -29,6 +29,9 @@ trap_exit_upgrade() {
     /bin/df -k | awk '( $NF ~ "^'"$BENEW_MNT"'($|/)" ) { print $0 }'
     echo ""
 
+    check_fs_methods
+    echo ""
+
     if [ $RES_EXIT = 0 -a $BREAKOUT = n ] && \
        [ $RES_PKGIPS -le 0 -o $RES_PKGIPS = 4 ] && \
        [ $RES_PKGSRC -le 0 -a $RES_BOOTADM -le 0 ] \
@@ -354,9 +357,6 @@ do_upgrade() {
 
     echo ""
     do_firefly
-
-    echo ""
-    check_fs_methods
 
     # Unmounting and reporting is done as part of trapped exit()
 
