@@ -586,7 +586,26 @@ firefly_tmpimg_update_contents() {
    { echo "+++ Got $RF"; cp -pf "$RF" "$F"; } || \
    echo "=== No $RFP nor $RFK !"
   done
-done ) && { \
+done ) && ( \
+  for F in \
+    /kernel/crypto/skein \
+    /kernel/crypto/edonr \
+    /kernel/crypto/amd64/skein \
+    /kernel/crypto/amd64/edonr \
+    /kernel/misc/amd64/edonr \
+    /kernel/misc/amd64/skein \
+    /kernel/misc/edonr \
+    /kernel/misc/skein \
+  ; do \
+    RF="$ALTROOT/$F" ; \
+    F="`pwd`/$F" ; \
+    if [ -s "$RF" ] ; then \
+	if [ ! -s "$F" ] || ! diff "$RF" "$F" > /dev/null ; then \
+    	    echo "+++ Got $RF"; cp -pf "$RF" "$F"; \
+	else echo "=== Already have $F"; fi; \
+    else echo "=== No $RF"; fi; \
+  done
+) && ( \
 [ -s "`pwd`/etc/path_to_inst.orig-ff" ] || \
   cp -pf "`pwd`/etc/path_to_inst" "`pwd`/etc/path_to_inst.orig-ff"
 [ -s "`pwd`/etc/path_to_inst.orig-ff" ] && \
@@ -595,7 +614,7 @@ done ) && { \
   cp -pf "$ALTROOT/etc/path_to_inst" `pwd`/etc/path_to_inst && \
   echo "+++ Copied $ALTROOT/etc/path_to_inst into failsafe image" || \
   cp -pf "`pwd`/etc/path_to_inst.orig-ff" `pwd`/etc/path_to_inst
-} ' > "$FIREFLY_ARCHIVE_MPT"/update-kernel.sh
+) ' > "$FIREFLY_ARCHIVE_MPT"/update-kernel.sh
 ####################
 
         [ $? = 0 ] && ( \
