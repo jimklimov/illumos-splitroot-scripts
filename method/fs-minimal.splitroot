@@ -71,7 +71,11 @@ for fs in /var /var/adm /tmp; do
 		mountpt=`zfs get -H -o value mountpoint $be$fs 2>/dev/null`
 		if [ $? = 0 ] ; then
 			if [ "x$mountpt" = "x$fs" ] ; then
-				readmnttab $mountpt < /etc/mnttab && [ "x$fstype" = xzfs ] && [ "x$special" = "x$be$fs" ] && continue
+				readmnttab $mountpt < /etc/mnttab && \
+					[ "x$fstype" = xzfs ] && \
+					[ "x$special" = "x$be$fs" ] && \
+					decho "Already mounted: '$fs' from '$be$fs': in same root hierarchy" && \
+					continue
 				decho "Mounting '$fs': use '$be$fs': in same root hierarchy"
 				/sbin/zfs mount -O $be$fs
 				continue
@@ -84,6 +88,11 @@ for fs in /var /var/adm /tmp; do
 		if [ $? = 0 -a "x$mountdslist" != x ] ; then
 			if [ "x`echo "$mountdslist"|wc -l|sed 's/ //g'`" = x1 ]; then
 				# We only had one hit
+				readmnttab $mountpt < /etc/mnttab && \
+					[ "x$fstype" = xzfs ] && \
+					[ "x$special" = "x$mountdslist" ] && \
+					decho "Already mounted: '$fs' from '$mountdslist': the only option" && \
+					continue
 				decho "Mounting '$fs': use '$mountdslist': the only option"
 				/sbin/zfs mount -O "$mountdslist"
 				continue
@@ -91,6 +100,11 @@ for fs in /var /var/adm /tmp; do
 				rpoolname="`echo "$be" | awk -F/ '{print $1}'`"
 				mountdspref="`echo "$mountdslist" | egrep '^'"$rpoolname/" | head -1`"
 				if [ $? = 0 -a "x$mountdspref" != x ] ; then
+					readmnttab $mountpt < /etc/mnttab && \
+						[ "x$fstype" = xzfs ] && \
+						[ "x$special" = "x$mountdspref" ] && \
+						decho "Already mounted: '$fs' from '$mountdspref': same rpool" && \
+						continue
 					decho "Mounting '$fs': use '$mountdspref': same rpool"
 					/sbin/zfs mount -O "$mountdspref"
 					continue
@@ -105,6 +119,11 @@ for fs in /var /var/adm /tmp; do
 					if [ $? = 0 -a \
 					     x"$dspool_altroot" = "x-" -o \
 					     x"$dspool_altroot" = "x/" ]; then
+						readmnttab $mountpt < /etc/mnttab && \
+							[ "x$fstype" = xzfs ] && \
+							[ "x$special" = "x$mountds" ] && \
+							decho "Already mounted: '$fs' from '$mountds': good altroot" && \
+							continue
 						decho "Mounting '$fs': use '$mountds': good altroot"
 						/sbin/zfs mount -O "$mountds"
 						continue
@@ -136,7 +155,9 @@ if [ "$rootiszfs" = 1 ] ; then
 		[ "$_SKIP" = 0 ] && _SKIP=1 && continue
 
 		if [ "x$mountp" != "x" -a "$mountp" != "legacy" ] ; then
-			mounted $mountp - zfs < /etc/mnttab  && continue
+			mounted $mountp - zfs < /etc/mnttab && \
+				decho "Already mounted: '$mountp' from '$be$mountp': in same root hierarchy" && \
+				continue
 			decho "Mounting '$mountp': use '$be$mountp': in same root hierarchy"
 			/sbin/zfs mount $be$mountp
 		fi
