@@ -1,0 +1,7 @@
+# Byproducts of new-patch generation
+*.hdr
+*.diff
+
+# This is not masked out on purpose: let it be visible
+# that the new patchfile was not GIT'ed yet
+#*.new
