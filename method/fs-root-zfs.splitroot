@@ -21,7 +21,7 @@
 #
 #
 # Copyright (c) 1992, 2010, Oracle and/or its affiliates. All rights reserved.
-# Copyright (c) 2013 by Jim Klimov
+# Copyright (c) 2013-2015 by Jim Klimov
 #
 
 #
@@ -54,7 +54,8 @@ debug_mnt=0
 
 # Report to console if enabled, and to SMF log always
 decho() {
-	[ x"$debug_mnt" = x1 ] && echo $* >/dev/msglog
+	[ x"$debug_mnt" = x1 ] && echo $* >/dev/msglog \
+		&& echo "$0: $*" >>/etc/svc/volatile/fs-root.log 2>/dev/null
 	echo $*
 }
 

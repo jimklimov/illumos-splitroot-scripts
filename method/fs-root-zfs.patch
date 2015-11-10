@@ -33,14 +33,21 @@ Copyright (C) 2013-2015 by Jim Klimov, License: CDDL
  		if [ $? != 0 ] ; then
  				msg='zfs-mount failed'
 --- /lib/svc/method/fs-minimal.orig-oi_151a9	2011-09-12 13:04:00.000000000 +0200
-+++ /lib/svc/method/fs-minimal	2015-09-29 16:35:07.333776279 +0200
-@@ -31,6 +31,10 @@
++++ /lib/svc/method/fs-minimal	2015-10-03 14:35:07.333776279 +0200
+@@ -31,6 +31,17 @@
  . /lib/svc/share/smf_include.sh
  . /lib/svc/share/fs_include.sh
  
-+# Report selected mounts to /dev/console
++# Report selected mounts to /dev/msglog beside SMF log?
 +debug_mnt=0
 +[ -f /.debug_mnt ] && debug_mnt=1
++
++# Report to console if enabled, and to SMF log always
++decho() {
++	[ x"$debug_mnt" = x1 ] && echo $* >/dev/msglog \
++		&& echo "$0: $*" >>/etc/svc/volatile/fs-root.log 2>/dev/null
++	echo $*
++}
 +
  # Mount other file systems to be available in single user mode.
  # Currently, these are /var, /var/adm, /var/run and /tmp.  A change
@@ -49,7 +56,7 @@ Copyright (C) 2013-2015 by Jim Klimov, License: CDDL
  	if [ -n "$mountp" ]; then
  		mounted $mountp $mntopts $fstype < /etc/mnttab && continue
  		checkfs $fsckdev $fstype $mountp || exit $SMF_EXIT_ERR_FATAL
-+		[ x"$debug_mnt" = x1 ] && echo "Mounting '$fs': use '$mountp' of type '$fstype' with opts '$mntopts' from vfstab" > /dev/console
++		decho "Mounting '$fs': use '$mountp' of type '$fstype' with opts '$mntopts' from vfstab"
  		mountfs -O $mountp $fstype $mntopts - ||
  		    exit $SMF_EXIT_ERR_FATAL
  		continue
@@ -58,7 +65,7 @@ Copyright (C) 2013-2015 by Jim Klimov, License: CDDL
  		if [ $? = 0 ] ; then
  			if [ "x$mountpt" = "x$fs" ] ; then
 +				readmnttab $mountpt < /etc/mnttab && [ "x$fstype" = xzfs ] && [ "x$special" = "x$be$fs" ] && continue
-+				[ x"$debug_mnt" = x1 ] && echo "Mounting '$fs': use '$be$fs': in same root hierarchy" > /dev/console
++				decho "Mounting '$fs': use '$be$fs': in same root hierarchy"
  				/sbin/zfs mount -O $be$fs
 +				continue
  			fi
@@ -71,14 +78,14 @@ Copyright (C) 2013-2015 by Jim Klimov, License: CDDL
 +		if [ $? = 0 -a "x$mountdslist" != x ] ; then
 +			if [ "x`echo "$mountdslist"|wc -l|sed 's/ //g'`" = x1 ]; then
 +				# We only had one hit
-+				[ x"$debug_mnt" = x1 ] && echo "Mounting '$fs': use '$mountdslist': the only option" > /dev/console
++				decho "Mounting '$fs': use '$mountdslist': the only option"
 +				/sbin/zfs mount -O "$mountdslist"
 +				continue
 +			else
 +				rpoolname="`echo "$be" | awk -F/ '{print $1}'`"
 +			        mountdspref="`echo "$mountdslist" | egrep '^'"$rpoolname/" | head -1`"
 +				if [ $? = 0 -a "x$mountdspref" != x ] ; then
-+					[ x"$debug_mnt" = x1 ] && echo "Mounting '$fs': use '$mountdspref': same rpool" > /dev/console
++					decho "Mounting '$fs': use '$mountdspref': same rpool"
 +					/sbin/zfs mount -O "$mountdspref"
 +					continue
 +				fi
@@ -92,7 +99,7 @@ Copyright (C) 2013-2015 by Jim Klimov, License: CDDL
 +					if [ $? = 0 -a \
 +					     x"$dspool_altroot" = "x-" -o \
 +					     x"$dspool_altroot" = "x/" ]; then
-+						[ x"$debug_mnt" = x1 ] && echo "Mounting '$fs': use '$mountds': good altroot" > /dev/console
++						decho "Mounting '$fs': use '$mountds': good altroot"
 +					        /sbin/zfs mount -O "$mountds"
 +						continue
 +					fi
@@ -119,13 +126,13 @@ Copyright (C) 2013-2015 by Jim Klimov, License: CDDL
 +
  		if [ "x$mountp" != "x" -a "$mountp" != "legacy" ] ; then
  			mounted $mountp - zfs < /etc/mnttab  && continue
-+			[ x"$debug_mnt" = x1 ] && echo "Mounting '$mountp': use '$be$mountp': in same root hierarchy" > /dev/console
++			decho "Mounting '$mountp': use '$be$mountp': in same root hierarchy"
  			/sbin/zfs mount $be$mountp
  		fi
  	done
 --- /lib/svc/method/fs-root-zfs.orig-oi_151a9	1970-01-01 01:00:00.000000000 +0100
 +++ /lib/svc/method/fs-root-zfs	2013-11-30 04:31:04.263795334 +0100
-@@ -0,0 +1,449 @@
+@@ -0,0 +1,450 @@
 +#!/sbin/sh
 +#
 +# CDDL HEADER START
@@ -149,7 +156,7 @@ Copyright (C) 2013-2015 by Jim Klimov, License: CDDL
 +#
 +#
 +# Copyright (c) 1992, 2010, Oracle and/or its affiliates. All rights reserved.
-+# Copyright (c) 2013 by Jim Klimov
++# Copyright (c) 2013-2015 by Jim Klimov
 +#
 +
 +#
@@ -182,7 +189,8 @@ Copyright (C) 2013-2015 by Jim Klimov, License: CDDL
 +
 +# Report to console if enabled, and to SMF log always
 +decho() {
-+	[ x"$debug_mnt" = x1 ] && echo $* >/dev/msglog
++	[ x"$debug_mnt" = x1 ] && echo $* >/dev/msglog \
++		&& echo "$0: $*" >>/etc/svc/volatile/fs-root.log 2>/dev/null
 +	echo $*
 +}
 +
