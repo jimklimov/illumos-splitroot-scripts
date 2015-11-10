@@ -176,7 +176,7 @@ for _SVC in $NET_PHYS_FMRI $NET_NWAM_FMRI $NET_IPTUN_FMRI; do
 	echo "$_SVC: $_STATE" > /dev/msglog
 	case "$_STATE" in
 	    online*)    $SVCADM restart $_SVC ;;
-            maintenance)$SVCADM clear $_SVC ;;
+	    maintenance)$SVCADM clear $_SVC ;;
 	esac
 done
 unset _SVC _STATE
