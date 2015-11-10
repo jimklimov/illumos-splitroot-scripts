@@ -3,9 +3,9 @@ See http://wiki.openindiana.org/oi/Advanced+-+Split-root+installation
 and https://github.com/jimklimov/illumos-splitroot-scripts
 Copyright (C) 2013-2015 by Jim Klimov, License: CDDL
 
---- /lib/svc/method/fs-root.orig-oi-hipster-20150917    2015-09-17 16:51:13.776281274 +0200
-+++ /lib/svc/method/fs-root     2015-09-18 09:21:19.234858110 +0200
-@@ -22,6 +22,7 @@
+--- /lib/svc/method/fs-root.orig	2015-09-17 17:03:14.000000000 +0200
++++ /lib/svc/method/fs-root	2015-11-10 18:29:35.869538017 +0100
+@@ -22,11 +22,18 @@
  #
  # Copyright (c) 1992, 2010, Oracle and/or its affiliates. All rights reserved.
  # Copyright 2015 Nexenta Systems, Inc. All rights reserved.
@@ -13,7 +13,18 @@ Copyright (C) 2013-2015 by Jim Klimov, License: CDDL
  #
  
  # Make sure that the libraries essential to this stage of booting can be found.
-@@ -76,7 +76,8 @@
+ LD_LIBRARY_PATH=/lib; export LD_LIBRARY_PATH
+ 
++NET_PHYS_FMRI="svc:/network/physical:default"
++NET_NWAM_FMRI="svc:/network/physical:nwam"
++NET_IPTUN_FMRI="svc:/network/iptun:default"
++SVCADM=/usr/sbin/svcadm
++SVCS=/usr/bin/svcs
++
+ libc_mount() {
+ 	#
+ 	# If there is an optimized libc available in /usr that fits this
+@@ -76,7 +83,8 @@
  readvfstab "/usr" < $vfstab
  if [ -n "$mountp" ]; then
  	if [ "$fstype" = zfs ]; then
@@ -23,7 +34,7 @@ Copyright (C) 2013-2015 by Jim Klimov, License: CDDL
  	else
  		#
  		# Must use -o largefiles here to ensure the
-@@ -127,7 +128,7 @@
+@@ -127,7 +135,7 @@
  	# if mountp = /usr, there is a non-legacy mount of /usr
  	# in the boot environment being booted.
  	#
@@ -32,27 +43,54 @@ Copyright (C) 2013-2015 by Jim Klimov, License: CDDL
  		/sbin/zfs mount $special/usr
  		if [ $? != 0 ] ; then
  				msg='zfs-mount failed'
---- /lib/svc/method/fs-minimal.orig-oi_151a9	2011-09-12 13:04:00.000000000 +0200
-+++ /lib/svc/method/fs-minimal	2015-10-03 14:35:07.333776279 +0200
-@@ -31,6 +31,17 @@
+@@ -160,4 +168,17 @@
+ 
+ libc_mount
+ 
++#
++# After possibly finding new drivers, and after getting an /usr, redo network
++#
++for _SVC in $NET_PHYS_FMRI $NET_NWAM_FMRI $NET_IPTUN_FMRI; do
++	_STATE="`$SVCS -H -o state $_SVC`"
++	echo "$_SVC: $_STATE" > /dev/msglog
++	case "$_STATE" in
++	    online*)    $SVCADM restart $_SVC ;;
++	    maintenance)$SVCADM clear $_SVC ;;
++	esac
++done
++unset _SVC _STATE
++
+ exit $SMF_EXIT_OK
+--- /lib/svc/method/fs-minimal.orig	2015-09-22 17:41:40.894253909 +0200
++++ /lib/svc/method/fs-minimal	2015-11-10 12:23:41.960257620 +0100
+@@ -19,6 +19,7 @@
+ #
+ # CDDL HEADER END
+ #
++# Copyright (c) 2013-2015 by Jim Klimov
+ #
+ # Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
+ # Use is subject to license terms.
+@@ -31,6 +32,18 @@
  . /lib/svc/share/smf_include.sh
  . /lib/svc/share/fs_include.sh
  
-+# Report selected mounts to /dev/msglog beside SMF log?
++# Report selected mounts to /dev/msglog and custom mounting-log file,
++# beside the usual SMF log (via stdout)?
 +debug_mnt=0
 +[ -f /.debug_mnt ] && debug_mnt=1
 +
 +# Report to console if enabled, and to SMF log always
 +decho() {
-+	[ x"$debug_mnt" = x1 ] && echo $* >/dev/msglog \
++	[ x"$debug_mnt" = x1 ] && echo "$*" >/dev/msglog \
 +		&& echo "$0: $*" >>/etc/svc/volatile/fs-root.log 2>/dev/null
-+	echo $*
++	echo "$*"
 +}
 +
  # Mount other file systems to be available in single user mode.
  # Currently, these are /var, /var/adm, /var/run and /tmp.  A change
  # here will require a modification to the following programs (and
-@@ -49,6 +53,7 @@
+@@ -49,6 +62,7 @@
  	if [ -n "$mountp" ]; then
  		mounted $mountp $mntopts $fstype < /etc/mnttab && continue
  		checkfs $fsckdev $fstype $mountp || exit $SMF_EXIT_ERR_FATAL
@@ -60,11 +98,15 @@ Copyright (C) 2013-2015 by Jim Klimov, License: CDDL
  		mountfs -O $mountp $fstype $mntopts - ||
  		    exit $SMF_EXIT_ERR_FATAL
  		continue
-@@ -57,10 +62,51 @@
+@@ -57,10 +71,70 @@
  		mountpt=`zfs get -H -o value mountpoint $be$fs 2>/dev/null`
  		if [ $? = 0 ] ; then
  			if [ "x$mountpt" = "x$fs" ] ; then
-+				readmnttab $mountpt < /etc/mnttab && [ "x$fstype" = xzfs ] && [ "x$special" = "x$be$fs" ] && continue
++				readmnttab $mountpt < /etc/mnttab && \
++					[ "x$fstype" = xzfs ] && \
++					[ "x$special" = "x$be$fs" ] && \
++					decho "Already mounted: '$fs' from '$be$fs': in same root hierarchy" && \
++					continue
 +				decho "Mounting '$fs': use '$be$fs': in same root hierarchy"
  				/sbin/zfs mount -O $be$fs
 +				continue
@@ -78,29 +120,44 @@ Copyright (C) 2013-2015 by Jim Klimov, License: CDDL
 +		if [ $? = 0 -a "x$mountdslist" != x ] ; then
 +			if [ "x`echo "$mountdslist"|wc -l|sed 's/ //g'`" = x1 ]; then
 +				# We only had one hit
++				readmnttab $mountpt < /etc/mnttab && \
++					[ "x$fstype" = xzfs ] && \
++					[ "x$special" = "x$mountdslist" ] && \
++					decho "Already mounted: '$fs' from '$mountdslist': the only option" && \
++					continue
 +				decho "Mounting '$fs': use '$mountdslist': the only option"
 +				/sbin/zfs mount -O "$mountdslist"
 +				continue
 +			else
 +				rpoolname="`echo "$be" | awk -F/ '{print $1}'`"
-+			        mountdspref="`echo "$mountdslist" | egrep '^'"$rpoolname/" | head -1`"
++				mountdspref="`echo "$mountdslist" | egrep '^'"$rpoolname/" | head -1`"
 +				if [ $? = 0 -a "x$mountdspref" != x ] ; then
++					readmnttab $mountpt < /etc/mnttab && \
++						[ "x$fstype" = xzfs ] && \
++						[ "x$special" = "x$mountdspref" ] && \
++						decho "Already mounted: '$fs' from '$mountdspref': same rpool" && \
++						continue
 +					decho "Mounting '$fs': use '$mountdspref': same rpool"
 +					/sbin/zfs mount -O "$mountdspref"
 +					continue
 +				fi
 +				# This is the least-definite situation: several
-+			        # matching datasets exist, and none on the current
++				# matching datasets exist, and none on the current
 +				# rpool. See if any pools can be ruled out due to
-+			        # bad (non-default) altroots.
++				# bad (non-default) altroots.
 +				for mountds in $mountdslist; do
 +					dspool="`echo "$mountds" | awk -F/ '{print $1}'`"
 +					dspool_altroot="`zpool list -H -o altroot "$dspool"`"
 +					if [ $? = 0 -a \
 +					     x"$dspool_altroot" = "x-" -o \
 +					     x"$dspool_altroot" = "x/" ]; then
++						readmnttab $mountpt < /etc/mnttab && \
++							[ "x$fstype" = xzfs ] && \
++							[ "x$special" = "x$mountds" ] && \
++							decho "Already mounted: '$fs' from '$mountds': good altroot" && \
++							continue
 +						decho "Mounting '$fs': use '$mountds': good altroot"
-+					        /sbin/zfs mount -O "$mountds"
++						/sbin/zfs mount -O "$mountds"
 +						continue
 +					fi
 +				done
@@ -113,7 +170,7 @@ Copyright (C) 2013-2015 by Jim Klimov, License: CDDL
  done
  
  mounted /var/run - tmpfs < /etc/mnttab
-@@ -73,10 +118,16 @@
+@@ -73,10 +147,18 @@
  fi
  
  if [ "$rootiszfs" = 1 ] ; then
@@ -125,14 +182,17 @@ Copyright (C) 2013-2015 by Jim Klimov, License: CDDL
 +		[ "$_SKIP" = 0 ] && _SKIP=1 && continue
 +
  		if [ "x$mountp" != "x" -a "$mountp" != "legacy" ] ; then
- 			mounted $mountp - zfs < /etc/mnttab  && continue
+-			mounted $mountp - zfs < /etc/mnttab  && continue
++			mounted $mountp - zfs < /etc/mnttab && \
++				decho "Already mounted: '$mountp' from '$be$mountp': in same root hierarchy" && \
++				continue
 +			decho "Mounting '$mountp': use '$be$mountp': in same root hierarchy"
  			/sbin/zfs mount $be$mountp
  		fi
  	done
---- /lib/svc/method/fs-root-zfs.orig-oi_151a9	1970-01-01 01:00:00.000000000 +0100
-+++ /lib/svc/method/fs-root-zfs	2013-11-30 04:31:04.263795334 +0100
-@@ -0,0 +1,450 @@
+--- /lib/svc/method/fs-root-zfs.orig	1970-01-01 01:00:00.000000000 +0100
++++ /lib/svc/method/fs-root-zfs	2015-11-10 12:22:41.167701394 +0100
+@@ -0,0 +1,451 @@
 +#!/sbin/sh
 +#
 +# CDDL HEADER START
@@ -183,15 +243,16 @@ Copyright (C) 2013-2015 by Jim Klimov, License: CDDL
 +. /lib/svc/share/smf_include.sh
 +. /lib/svc/share/fs_include.sh
 +
-+# Report selected mounts to /dev/msglog beside SMF log?
++# Report selected mounts to /dev/msglog and custom mounting-log file,
++# beside the usual SMF log (via stdout)?
 +debug_mnt=0
 +[ -f /.debug_mnt ] && debug_mnt=1
 +
 +# Report to console if enabled, and to SMF log always
 +decho() {
-+	[ x"$debug_mnt" = x1 ] && echo $* >/dev/msglog \
++	[ x"$debug_mnt" = x1 ] && echo "$*" >/dev/msglog \
 +		&& echo "$0: $*" >>/etc/svc/volatile/fs-root.log 2>/dev/null
-+	echo $*
++	echo "$*"
 +}
 +
 +#
@@ -583,8 +644,17 @@ Copyright (C) 2013-2015 by Jim Klimov, License: CDDL
 +
 +decho "fs-root-zfs: completed without fatal errors"
 +exit $SMF_EXIT_OK
---- /lib/svc/method/fs-usr.orig-oi_151a9	2012-07-01 00:42:21.000000000 +0200
-+++ /lib/svc/method/fs-usr	2012-09-25 23:53:09.699628296 +0200
+--- /lib/svc/method/fs-usr.orig	2014-02-14 12:26:50.000000000 +0100
++++ /lib/svc/method/fs-usr	2015-11-10 11:39:14.113215605 +0100
+@@ -24,7 +24,7 @@
+ #
+ # Copyright (c) 1984, 1986, 1987, 1988, 1989 AT&T.
+ # All rights reserved.
+-#
++# Copyright 2015 Nexenta Systems, Inc. All rights reserved.
+ #
+ . /lib/svc/share/smf_include.sh
+ . /lib/svc/share/fs_include.sh
 @@ -54,8 +54,14 @@
  	# If we have a dedicated dump device, then go ahead and configure it.
  	# 
