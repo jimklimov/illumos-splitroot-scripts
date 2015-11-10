@@ -48,15 +48,16 @@ LD_LIBRARY_PATH=/lib; export LD_LIBRARY_PATH
 . /lib/svc/share/smf_include.sh
 . /lib/svc/share/fs_include.sh
 
-# Report selected mounts to /dev/msglog beside SMF log?
+# Report selected mounts to /dev/msglog and custom mounting-log file,
+# beside the usual SMF log (via stdout)?
 debug_mnt=0
 [ -f /.debug_mnt ] && debug_mnt=1
 
 # Report to console if enabled, and to SMF log always
 decho() {
-	[ x"$debug_mnt" = x1 ] && echo $* >/dev/msglog \
+	[ x"$debug_mnt" = x1 ] && echo "$*" >/dev/msglog \
 		&& echo "$0: $*" >>/etc/svc/volatile/fs-root.log 2>/dev/null
-	echo $*
+	echo "$*"
 }
 
 #
