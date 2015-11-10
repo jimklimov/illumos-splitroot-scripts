@@ -2,7 +2,10 @@ These OPTIONAL fixes should untie networking from split-off /usr as much
 as possible. May be not even needed at all with proper setup of split-root
 (the rootfs structure should then get mounted before any networking kicks in).
 See http://wiki.openindiana.org/oi/Advanced+-+Split-root+installation
-Copyright (C) 2013 by Jim Klimov, License: CDDL
+Note that network-kicking changes in fs-root are relevant in any case so
+they are part of the main fs-root-zfs.patch (kick network services after
+we mount /usr because new drivers can be found there).
+Copyright (C) 2013-2015 by Jim Klimov, License: CDDL
 
 --- /lib/svc/method/net-iptun.orig-oi151a8	2013-07-21 16:35:53.000000000 +0200
 +++ /lib/svc/method/net-iptun	2013-11-27 00:47:30.900872107 +0100
@@ -263,38 +266,3 @@ Copyright (C) 2013 by Jim Klimov, License: CDDL
  	if  [[ "$state" != "disabled" && $current != *Z* ]]; then
  		#
  		# skip if not a persistent interface, or if it should get IP
---- /lib/svc/method/fs-root.splitroot	2013-11-17 03:21:47.000000000 +0100
-+++ /lib/svc/method/fs-root	2013-11-27 00:35:29.119717438 +0100
-@@ -26,6 +26,12 @@
- # Make sure that the libraries essential to this stage of booting can be found.
- LD_LIBRARY_PATH=/lib; export LD_LIBRARY_PATH
- 
-+NET_PHYS_FMRI="svc:/network/physical:default"
-+NET_NWAM_FMRI="svc:/network/physical:nwam"
-+NET_IPTUN_FMRI="svc:/network/iptun:default"
-+SVCADM=/usr/sbin/svcadm
-+SVCS=/usr/bin/svcs
-+
- libc_mount() {
- 	#
- 	# If there is an optimized libc available in /usr that fits this
-@@ -239,6 +245,19 @@
- #
- /usr/sbin/devfsadm -I -P
- 
- libc_mount
- 
-+#
-+# After possibly finding new drivers, and after getting an /usr, redo network
-+#
-+for _SVC in $NET_PHYS_FMRI $NET_NWAM_FMRI $NET_IPTUN_FMRI; do
-+	_STATE="`$SVCS -H -o state $_SVC`"
-+	echo "$_SVC: $_STATE" > /dev/msglog
-+	case "$_STATE" in
-+	    online*)	$SVCADM restart $_SVC ;;
-+	    maintenance)$SVCADM clear $_SVC ;;
-+	esac
-+done
-+unset _SVC _STATE
-+
- exit $SMF_EXIT_OK
