@@ -27,10 +27,10 @@ CURRENT_RPOOL="`grep -w / /etc/mnttab | grep -w zfs | sed 's,^\([^\/]*\)/.*,\1,'
 
 [ x"$BEOLD_MPT" = x ] && \
 if [ x"$CURRENT_BE" = x"$BEOLD" -a x"$CURRENT_RPOOL" = x"$RPOOL" ]; then
-	### For the currently running system
-	BEOLD_MPT="/"
+        ### For the currently running system
+        BEOLD_MPT="/"
 else
-	BEOLD_MPT="/b"
+        BEOLD_MPT="/b"
 fi
 
 [ x"$BENEW_MPT" = x ] && BENEW_MPT="/a"
@@ -51,14 +51,14 @@ beadm_clone_attrs() {
     echo "=== Trying to replicate ZFS attributes from original to new BE..."
     zfs list -H -o name -r "$BEOLD_DS" | \
     while read Z; do
-	S="`echo "$Z" | sed "s,^$BEOLD_DS,,"`"
-	echo "===== '$S'"
-	zfs get all "$BEOLD_DS$S" | \
-		egrep ' (local|received)' | \
-		egrep -v "$EXCLUDE_ATTRS" | \
-		while read _D A V _T; do \
-			echo "$A=$V"; zfs set "$A=$V" "$BENEW_DS$S"; \
-		done
+        S="`echo "$Z" | sed "s,^$BEOLD_DS,,"`"
+        echo "===== '$S'"
+        zfs get all "$BEOLD_DS$S" | \
+                egrep ' (local|received)' | \
+                egrep -v "$EXCLUDE_ATTRS" | \
+                while read _D A V _T; do \
+                        echo "$A=$V"; zfs set "$A=$V" "$BENEW_DS$S"; \
+                done
     done
     echo "=== Replicated custom ZFS attributes"
 }
@@ -91,10 +91,11 @@ beadm_clone_routine() {
     read LINE
 
     if [ x"$BEOLD_MPT" != x"/" ]; then
-	echo "=== Try to mount $BEOLD at $BEOLD_MNT (not strictly required)..."
-	beadm mount "$BEOLD" "$BEOLD_MNT"
+        echo "=== Try to mount $BEOLD at $BEOLD_MNT (not strictly required)..."
+        beadm mount "$BEOLD" "$BEOLD_MNT"
     fi
 
+    echo "=== Creating clone with system beadm..."
     beadm create -e "$BEOLD" "$BENEW" || exit
     echo "=== Created $BENEW based on $BEOLD"
 
@@ -109,9 +110,9 @@ beadm_clone_routine() {
 
 beadm_clone_wrapper() {
     if [ x"$_BEADM_CLONE" != "xno" ]; then
-	beadm_clone_routine || return
-	[ x"$_BEADM_CLONE_INFORM" != "xno" ] && \
-	    beadm_clone_whatnext
+        beadm_clone_routine || return
+        [ x"$_BEADM_CLONE_INFORM" != "xno" ] && \
+            beadm_clone_whatnext
     fi
     return 0
 }
