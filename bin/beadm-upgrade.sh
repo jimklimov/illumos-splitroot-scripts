@@ -10,8 +10,8 @@ LC_ALL=C
 export LANG LC_ALL PATH
 
 [ ! -s "`dirname $0`/beadm-clone.sh" ] && \
-	echo "FATAL: Can't find beadm-clone.sh" >&2 && \
-	exit 1
+        echo "FATAL: Can't find beadm-clone.sh" >&2 && \
+        exit 1
 
 RES_PKGIPS=-1
 RES_PKGSRC=-1
@@ -119,16 +119,16 @@ trap_exit_mount() {
 do_ensure_configs() {
     RES=0
     if [ -n "$BENEW" ] && beadm list "$BENEW" > /dev/null ; then
-	echo "INFO: It seems that BENEW='$BENEW' already exists; ensuring it is mounted..."
-	_BEADM_CLONE_INFORM=no _BEADM_CLONE=no . "`dirname $0`/beadm-clone.sh"
-	RES=$?
+        echo "INFO: It seems that BENEW='$BENEW' already exists; ensuring it is mounted..."
+        _BEADM_CLONE_INFORM=no _BEADM_CLONE=no . "`dirname $0`/beadm-clone.sh"
+        RES=$?
     else
-	. "`dirname $0`/beadm-clone.sh"
-	RES=$?
+        . "`dirname $0`/beadm-clone.sh"
+        RES=$?
     fi
     [ $RES != 0 -o x"$BENEW" = x ] && \
-	echo "FATAL: Failed to use beadm-clone.sh" >&2 && \
-	exit 2
+        echo "FATAL: Failed to use beadm-clone.sh" >&2 && \
+        exit 2
 
     return 0
 }
@@ -145,36 +145,36 @@ do_clone_mount() {
     do_clone_umount
 
     if [ -n "$BENEW_MNT" -a -n "$BENEW_DS" -a -n "$BENEW" ]; then
-	_MPT="`/bin/df -Fzfs -k "$BENEW_MNT" | awk '{print $1}' | grep "$BENEW_DS"`"
-	if [ x"$_MPT" != x"$BENEW_DS" -o -z "$_MPT" ]; then
-	    beadm mount "$BENEW" "$BENEW_MNT" || exit
-	    _MPT="`/bin/df -Fzfs -k "$BENEW_MNT" | awk '{print $1}' | grep "$BENEW_DS"`"
-	    [ x"$_MPT" != x"$BENEW_DS" -o -z "$_MPT" ] && \
-		echo "FATAL: Can't mount $BENEW at $BENEW_MNT" && \
-		exit 3
-	fi
+        _MPT="`/bin/df -Fzfs -k "$BENEW_MNT" | awk '{print $1}' | grep "$BENEW_DS"`"
+        if [ x"$_MPT" != x"$BENEW_DS" -o -z "$_MPT" ]; then
+            beadm mount "$BENEW" "$BENEW_MNT" || exit
+            _MPT="`/bin/df -Fzfs -k "$BENEW_MNT" | awk '{print $1}' | grep "$BENEW_DS"`"
+            [ x"$_MPT" != x"$BENEW_DS" -o -z "$_MPT" ] && \
+                echo "FATAL: Can't mount $BENEW at $BENEW_MNT" && \
+                exit 3
+        fi
     else
-	echo "FATAL: Configuration not determined" >&2
-	exit 2
+        echo "FATAL: Configuration not determined" >&2
+        exit 2
     fi
 
     beadm list "$BENEW"
     [ $? != 0 ] && \
-	echo "FATAL: Failed to locate the BE '$BENEW'" >&2 && \
-	exit 3
+        echo "FATAL: Failed to locate the BE '$BENEW'" >&2 && \
+        exit 3
 
     _MPT="`/bin/df -Fzfs -k "$BENEW_MNT" | awk '($1 == "'"$BENEW_DS"'") {print $1}'`"
     [ x"$_MPT" != x"$BENEW_DS" -o -z "$_MPT" ] && \
-	echo "FATAL: Could not mount $BENEW at $BENEW_MNT"
+        echo "FATAL: Could not mount $BENEW at $BENEW_MNT"
 
     # Now, ensure that shared sub-datasets (if any) are also lofs-mounted
     # /proc is needed for pkgsrc dependencies (some getexecname() fails otherwise)
     # /dev/urandom is needed for pkgips python scripts
     for _SMT in /tmp /proc /dev /devices \
-	`/bin/df -k | awk '( $1 ~ "^'"$RPOOL_SHARED"'" ) { print $NF }'` \
+        `/bin/df -k | awk '( $1 ~ "^'"$RPOOL_SHARED"'" ) { print $NF }'` \
     ; do
-	echo "===== lofs-mount '$_SMT' at '$BENEW_MNT$_SMT'"
-	mount -F lofs -o rw "$_SMT" "$BENEW_MNT$_SMT"
+        echo "===== lofs-mount '$_SMT' at '$BENEW_MNT$_SMT'"
+        mount -F lofs -o rw "$_SMT" "$BENEW_MNT$_SMT"
     done
 
     return 0
@@ -190,11 +190,11 @@ do_clone_umount() {
     echo "=== Unmounting BE $BENEW under '$BENEW_MNT'..."
 
     /bin/df -k -F lofs | \
-	awk '( $NF ~ "^'"$BENEW_MNT"'/.*" ) { print $1" "$NF }' | \
-	sort -r | while read _LFS _LMT; do
-	    echo "===== unmounting '$_LFS' bound over '$_LMT'..."
-	    umount "$_LMT"
-	done
+        awk '( $NF ~ "^'"$BENEW_MNT"'/.*" ) { print $1" "$NF }' | \
+        sort -r | while read _LFS _LMT; do
+            echo "===== unmounting '$_LFS' bound over '$_LMT'..."
+            umount "$_LMT"
+        done
 
     echo "===== beadm-unmounting $BENEW ($BENEW_MNT)..."
     beadm umount "$BENEW_MNT" || \
@@ -213,9 +213,9 @@ do_normalize_mountattrs() {
     zfs set mountpoint=/ "$BENEW_DS" && \
     zfs list -t filesystem -Honame -r "$BENEW_DS" | grep "$BENEW_DS/" | sort | \
     while read Z; do
-	echo "===== Inheriting for $Z" && \
-	zfs set canmount=noauto "$Z" && \
-	zfs inherit mountpoint "$Z"
+        echo "===== Inheriting for $Z" && \
+        zfs set canmount=noauto "$Z" && \
+        zfs inherit mountpoint "$Z"
     done
 }
 
@@ -223,15 +223,15 @@ do_upgrade_pkgips() {
     ### Note that IPS pkg command does not work under a simple chroot
     ### but has proper altroot support instead
     if [ -x /usr/bin/pkg ]; then
-	echo "=== Run IPS pkg upgrade (refresh package list, update pkg itself, update others)..."
+        echo "=== Run IPS pkg upgrade (refresh package list, update pkg itself, update others)..."
 
         echo "===== Querying the configured IPS publishers for '$BENEW' in '$BENEW_MNT'"
-	/usr/bin/pkg -R "$BENEW_MNT" publisher
+        /usr/bin/pkg -R "$BENEW_MNT" publisher
 
-	{ echo "===== Refreshing IPS package list"
+        { echo "===== Refreshing IPS package list"
           /usr/bin/pkg -R "$BENEW_MNT" refresh
           RES_PKGIPS=$?; [ "$RES_PKGIPS" = 0 ] ; } && \
-	{ echo "===== Updating PKG software itself"
+        { echo "===== Updating PKG software itself"
           ### This clause should fail if no 'pkg' updates were available, or if a
           ### chrooted upgrade attempt with the new 'pkg' failed - both ways fall
           ### through to altroot upgrade attempt
@@ -240,13 +240,13 @@ do_upgrade_pkgips() {
         { echo "===== Updating the image with new PKG software via chroot with a special variable"
           PKG_LIVE_ROOT=/// chroot "$BENEW_MNT" /usr/bin/pkg -R / image-update --no-refresh --accept --deny-new-be --no-backup-be
           RES_PKGIPS=$?; [ "$RES_PKGIPS" = 0 ] || [ "$RES_PKGIPS" = 4 ] ; } || \
+        { echo "===== Updating the image with old PKG software via altroot"
+          /usr/bin/pkg -R "$BENEW_MNT" image-update --no-refresh --accept --deny-new-be --no-backup-be
+          RES_PKGIPS=$?; [ "$RES_PKGIPS" = 0 ] || [ "$RES_PKGIPS" = 4 ] ; } || \
         { echo "===== Updating the image with new PKG software via chroot"
           chroot "$BENEW_MNT" /usr/bin/pkg -R / image-update --no-refresh --accept --deny-new-be --no-backup-be
           RES_PKGIPS=$?; [ "$RES_PKGIPS" = 0 ] || [ "$RES_PKGIPS" = 4 ] ; } || \
-	{ echo "===== Updating the image with old PKG software via altroot"
-          /usr/bin/pkg -R "$BENEW_MNT" image-update --no-refresh --accept --deny-new-be --no-backup-be
-          RES_PKGIPS=$?; [ "$RES_PKGIPS" = 0 ] || [ "$RES_PKGIPS" = 4 ] ; } || \
-	{ echo "===== Updating the image with old PKG software via altroot and allowed refresh"
+        { echo "===== Updating the image with old PKG software via altroot and allowed refresh"
           /usr/bin/pkg -R "$BENEW_MNT" image-update --accept --deny-new-be --no-backup-be
           RES_PKGIPS=$?; }
 
@@ -280,10 +280,10 @@ do_upgrade_pkgips() {
         echo "===== Querying the version of osnet-incorporation for '$BENEW' in '$BENEW_MNT' (FYI)"
         /usr/bin/pkg -R "$BENEW_MNT" info osnet-incorporation
 
-	TS="`date -u "+%Y%m%dT%H%M%SZ"`" && \
+        TS="`date -u "+%Y%m%dT%H%M%SZ"`" && \
             echo "===== Taking snapshots @postupgrade_pkgips-$TS ..." && \
-	    zfs snapshot -r "$RPOOL_SHARED@postupgrade_pkgips-$TS" && \
-	    zfs snapshot -r "$BENEW_DS@postupgrade_pkgips-$TS" && \
+            zfs snapshot -r "$RPOOL_SHARED@postupgrade_pkgips-$TS" && \
+            zfs snapshot -r "$BENEW_DS@postupgrade_pkgips-$TS" && \
             chroot "$BENEW_MNT" /usr/sbin/zoneadm list -cp | \
             awk -F: '( $6 == "ipkg" && $2 != "global" ) { print $4}' | \
             while read ZR; do
@@ -302,24 +302,24 @@ do_upgrade_pkgsrc() {
         # TODO: PKGSRC upgrades in local zones (new ZBEs) as well
         # (do not limit to ipkg zones however ;) )
     if [ -x "$BENEW_MNT"/opt/local/bin/pkgin ]; then
-	echo "=== Run PKGSRC upgrade..."
-	chroot "$BENEW_MNT" /opt/local/bin/pkgin update
-	RES_PKGSRC=$?
-	yes | chroot "$BENEW_MNT" /opt/local/bin/pkgin full-upgrade
-	RES_PKGSRC=$?
-#	echo "===== Run PKGSRC orphan autoremoval..."
-#	chroot "$BENEW_MNT" /opt/local/bin/pkgin autoremove || RES_PKGSRC=$?
-	TS="`date -u "+%Y%m%dT%H%M%SZ"`" && \
+        echo "=== Run PKGSRC upgrade..."
+        chroot "$BENEW_MNT" /opt/local/bin/pkgin update
+        RES_PKGSRC=$?
+        yes | chroot "$BENEW_MNT" /opt/local/bin/pkgin full-upgrade
+        RES_PKGSRC=$?
+#        echo "===== Run PKGSRC orphan autoremoval..."
+#        chroot "$BENEW_MNT" /opt/local/bin/pkgin autoremove || RES_PKGSRC=$?
+        TS="`date -u "+%Y%m%dT%H%M%SZ"`" && \
             echo "===== Taking snapshots @postupgrade_pkgsrc-$TS ..." && \
-	    zfs snapshot -r "$RPOOL_SHARED@postupgrade_pkgsrc-$TS" && \
-	    zfs snapshot -r "$BENEW_DS@postupgrade_pkgsrc-$TS"
+            zfs snapshot -r "$RPOOL_SHARED@postupgrade_pkgsrc-$TS" && \
+            zfs snapshot -r "$BENEW_DS@postupgrade_pkgsrc-$TS"
     fi
 }
 
 do_reconfig() {
     echo "=== Reconfiguring boot-archive in new BE..."
     touch "$BENEW_MNT/reconfigure" && \
-	bootadm update-archive -R "$BENEW_MNT"
+        bootadm update-archive -R "$BENEW_MNT"
     RES_BOOTADM=$?
 }
 
@@ -411,25 +411,25 @@ trap "BREAKOUT=y; exit 127;" 1 2 3 15
 
 case "`basename $0`" in
     *upgrade*)
-		trap 'trap_exit_upgrade $?' 0
-		do_upgrade
+                trap 'trap_exit_upgrade $?' 0
+                do_upgrade
                 ;;
-    *umount*)	[ -z "$BENEW" ] && \
-		    echo "FATAL: BENEW not defined, nothing to unmount" && \
-		    exit 1
-		trap 'trap_exit_mount $?' 0
-		do_ensure_configs
-		do_clone_umount
-		do_normalize_mountattrs
+    *umount*)   [ -z "$BENEW" ] && \
+                echo "FATAL: BENEW not defined, nothing to unmount" && \
+                    exit 1
+                trap 'trap_exit_mount $?' 0
+                do_ensure_configs
+                do_clone_umount
+                do_normalize_mountattrs
                 ;;
-    *mount*)	[ -z "$BENEW" ] && \
-		    echo "FATAL: BENEW not defined, nothing to mount" && \
-		    exit 1
-		trap 'trap_exit_mount $?' 0
-		do_ensure_configs || exit
-		do_clone_mount
+    *mount*)    [ -z "$BENEW" ] && \
+                echo "FATAL: BENEW not defined, nothing to mount" && \
+                    exit 1
+                trap 'trap_exit_mount $?' 0
+                do_ensure_configs || exit
+                do_clone_mount
                 ;;
-    *)		echo "FATAL: Command not determined: $@"
+    *)          echo "FATAL: Command not determined: $@"
                 exit 1
                 ;;
 esac
