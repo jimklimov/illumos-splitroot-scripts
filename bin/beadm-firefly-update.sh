@@ -294,7 +294,7 @@ initialize_envvars_beadm_firefly() {
 
                         [ -z "$FIREFLY_BEOLD" ] && \
                         [ -n "$FIREFLY_CONTAINER_SRCBE" ] && \
-                                FIREFLY_BEOLD="`echo "$FIREFLY_CONTAINER_SRCBE" | sed 's,\(firefly_....\).*$,\1,'`"
+                                FIREFLY_BEOLD="`echo "$FIREFLY_CONTAINER_SRCBE" | sed 's,\(firefly_[0-9]*\).*$,\1,'`"
 
                         [ -z "$FIREFLY_BEOLD" ] && \
                                 FIREFLY_BEOLD="firefly_0000" && \
