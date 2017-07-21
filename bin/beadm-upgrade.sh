@@ -82,14 +82,14 @@ trap_exit_upgrade() {
         ### for many reasons such as lack of the downloaded ISO image
         if [ $RES_PKGIPS -le 0 ]; then
             echo "=== SUCCESS, you can now do:"
-            printf "\tbeadm activate '$BENEW'    && init 6"
+            printf "\tbeadm activate '$BENEW'    && init 6\n"
             exit 0
         fi
         if [ $RES_PKGIPS = 4 ]; then
             echo "=== NOT FAILED (but may have had nothing to upgrade though), you can now do:"
-            printf "\tbeadm activate '$BENEW'    && init 6"
+            printf "\tbeadm activate '$BENEW'    && init 6\n"
             echo "... or if you change your mind:"
-            printf "\tbeadm destroy -Ffsv '$BENEW'"
+            printf "\tbeadm destroy -Ffsv '$BENEW'\n"
             exit 0
         fi
     fi >&2
@@ -97,7 +97,7 @@ trap_exit_upgrade() {
     [ $RES_EXIT = 0 ] && RES_EXIT=126
     echo "=== FAILED, the upgrade was not completed successfully" \
         "or maybe found no new updates; you can remove the new BE with:" >&2
-    printf "\tbeadm destroy -Ffsv '$BENEW' " >&2
+    printf "\tbeadm destroy -Ffsv '$BENEW' \n" >&2
     exit $RES_EXIT
 }
 
