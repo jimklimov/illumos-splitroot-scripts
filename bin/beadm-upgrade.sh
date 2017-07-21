@@ -1,7 +1,7 @@
 #!/bin/bash
 
 ### Run package upgrades in a new BE (created by a call to beadm-clone.sh)
-### Copyright (C) 2014-2015 by Jim Klimov, License: CDDL
+### Copyright (C) 2014-2017 by Jim Klimov, License: CDDL
 ### See also: http://wiki.openindiana.org/oi/Advanced+-+Split-root+installation
 
 PATH=/usr/gnu/bin:/usr/sfw/bin:/opt/gnu/bin:/opt/sfw/bin:/opt/omni/bin:/bin:/sbin:/usr/sbin:/usr/bin:$PATH
@@ -34,6 +34,9 @@ trap_exit_upgrade() {
     echo ""
     beadm list $BENEW
     /bin/df -k | awk '( $NF ~ "^'"$BENEW_MNT"'($|/)" ) { print $0 }'
+    if [ x"$BEOLD_MPT" != x"/" ] || [ x"$BEOLD" != x"$CURRENT_BE" ] ; then
+        /bin/df -k | awk '( $NF ~ "^'"$BEOLD_MNT"'($|/)" ) { print $0 }'
+    fi
     echo ""
 
     check_fs_methods
@@ -104,6 +107,9 @@ trap_exit_mount() {
     echo ""
     beadm list $BENEW
     /bin/df -k | awk '( $NF ~ "^'"$BENEW_MNT"'($|/)" ) { print $0 }'
+    if [ x"$BEOLD_MPT" != x"/" ] || [ x"$BEOLD" != x"$CURRENT_BE" ] ; then
+        /bin/df -k | awk '( $NF ~ "^'"$BEOLD_MNT"'($|/)" ) { print $0 }'
+    fi
     echo ""
 
     if [ $RES_EXIT = 0 -a $BREAKOUT = n ]; then
@@ -133,6 +139,51 @@ do_ensure_configs() {
     return 0
 }
 
+do_be_mount() {
+    local BE="$1"
+    local BE_MNT="$2"
+    local BE_DS="$3"
+    local _MPT _SMT
+
+    [ -z "$BE" -o -z "$BE_MNT" -o -z "$BE_DS" -o -z "$RPOOL_SHARED" ] && \
+        echo "ERROR: do_be_mount(): BE or BE_MNT or BE_DS or RPOOL_SHARED is not set" && \
+        return 1
+
+    if [ -n "$BE_MNT" -a -n "$BE_DS" -a -n "$BE" ]; then
+        _MPT="`/bin/df -Fzfs -k "$BE_MNT" | awk '{print $1}' | grep "$BE_DS"`"
+        if [ x"$_MPT" != x"$BE_DS" -o -z "$_MPT" ]; then
+            beadm mount "$BE" "$BE_MNT" || exit
+            _MPT="`/bin/df -Fzfs -k "$BE_MNT" | awk '{print $1}' | grep "$BE_DS"`"
+            [ x"$_MPT" != x"$BE_DS" -o -z "$_MPT" ] && \
+                echo "FATAL: Can't mount $BE at $BE_MNT" && \
+                return 3
+        fi
+    else
+        echo "FATAL: Configuration not determined" >&2
+        return 2
+    fi
+
+    beadm list "$BE"
+    [ $? != 0 ] && \
+        echo "FATAL: Failed to locate the BE '$BE'" >&2 && \
+        return 3
+
+    _MPT="`/bin/df -Fzfs -k "$BE_MNT" | awk '($1 == "'"$BE_DS"'") {print $1}'`"
+    [ x"$_MPT" != x"$BE_DS" -o -z "$_MPT" ] && \
+        echo "FATAL: Could not mount $BE at $BE_MNT" && \
+        return 4
+
+    # Now, ensure that shared sub-datasets (if any) are also lofs-mounted
+    # /proc is needed for pkgsrc dependencies (some getexecname() fails otherwise)
+    # /dev/urandom is needed for pkgips python scripts
+    for _SMT in /tmp /proc /dev /devices \
+        `/bin/df -k | awk '( $1 ~ "^'"$RPOOL_SHARED"'" ) { print $NF }'` \
+    ; do
+        echo "===== lofs-mount '$_SMT' at '$BE_MNT$_SMT'"
+        mount -F lofs -o rw "$_SMT" "$BE_MNT$_SMT"
+    done
+}
+
 do_clone_mount() {
     # This routine ensures that variables have been set and altroot is mounted
     # Note that we also support package upgrades in an existing (alt)root
@@ -144,40 +195,41 @@ do_clone_mount() {
     echo "INFO: Unmounting any previous traces (if any - may fail), just in case"
     do_clone_umount
 
-    if [ -n "$BENEW_MNT" -a -n "$BENEW_DS" -a -n "$BENEW" ]; then
-        _MPT="`/bin/df -Fzfs -k "$BENEW_MNT" | awk '{print $1}' | grep "$BENEW_DS"`"
-        if [ x"$_MPT" != x"$BENEW_DS" -o -z "$_MPT" ]; then
-            beadm mount "$BENEW" "$BENEW_MNT" || exit
-            _MPT="`/bin/df -Fzfs -k "$BENEW_MNT" | awk '{print $1}' | grep "$BENEW_DS"`"
-            [ x"$_MPT" != x"$BENEW_DS" -o -z "$_MPT" ] && \
-                echo "FATAL: Can't mount $BENEW at $BENEW_MNT" && \
-                exit 3
-        fi
-    else
-        echo "FATAL: Configuration not determined" >&2
-        exit 2
+    do_be_mount "$BENEW" "$BENEW_MNT" "$BENEW_DS"
+    BE_RES=$?
+    [ "$BE_RES" -gt 1 ] && exit $BE_RES
+
+    if [ x"$BEOLD_MPT" != x"/" ] || [ x"$BEOLD" != x"$CURRENT_BE" ] ; then
+        # Note that for updates from non-current BE to another BE,
+        # the script would want to compare some contents of /a and /b
+        # But still it is rather optional, so we do not exit on errors
+        do_be_mount "$BEOLD" "$BEOLD_MNT" "$BEOLD_DS" || BE_RES=$?
     fi
 
-    beadm list "$BENEW"
-    [ $? != 0 ] && \
-        echo "FATAL: Failed to locate the BE '$BENEW'" >&2 && \
-        exit 3
+    return $BE_RES
+}
 
-    _MPT="`/bin/df -Fzfs -k "$BENEW_MNT" | awk '($1 == "'"$BENEW_DS"'") {print $1}'`"
-    [ x"$_MPT" != x"$BENEW_DS" -o -z "$_MPT" ] && \
-        echo "FATAL: Could not mount $BENEW at $BENEW_MNT"
+do_be_umount() {
+    local BE="$1"
+    local BE_MNT="$2"
+    local _MPT _SMT
 
-    # Now, ensure that shared sub-datasets (if any) are also lofs-mounted
-    # /proc is needed for pkgsrc dependencies (some getexecname() fails otherwise)
-    # /dev/urandom is needed for pkgips python scripts
-    for _SMT in /tmp /proc /dev /devices \
-        `/bin/df -k | awk '( $1 ~ "^'"$RPOOL_SHARED"'" ) { print $NF }'` \
-    ; do
-        echo "===== lofs-mount '$_SMT' at '$BENEW_MNT$_SMT'"
-        mount -F lofs -o rw "$_SMT" "$BENEW_MNT$_SMT"
-    done
+    [ -z "$BE" -o -z "$BE_MNT" ] && \
+        echo "ERROR: do_be_umount(): BE or BE_MNT is not set" && \
+        return 1
 
-    return 0
+    echo "=== Unmounting BE $BE under '$BE_MNT'..."
+
+    /bin/df -k -F lofs | \
+        awk '( $NF ~ "^'"$BE_MNT"'/.*" ) { print $1" "$NF }' | \
+        sort -r | while read _LFS _LMT; do
+            echo "===== unmounting '$_LFS' bound over '$_LMT'..."
+            umount "$_LMT"
+        done
+
+    echo "===== beadm-unmounting $BE ($BE_MNT)..."
+    beadm umount "$BE_MNT" || \
+    beadm umount "$BE"
 }
 
 do_clone_umount() {
@@ -187,18 +239,16 @@ do_clone_umount() {
         echo "ERROR: do_clone_umount(): BENEW or BENEW_MNT is not set" && \
         return 1
 
-    echo "=== Unmounting BE $BENEW under '$BENEW_MNT'..."
+    do_be_umount "$BENEW" "$BENEW_MNT"
+    BE_RES=$?
 
-    /bin/df -k -F lofs | \
-        awk '( $NF ~ "^'"$BENEW_MNT"'/.*" ) { print $1" "$NF }' | \
-        sort -r | while read _LFS _LMT; do
-            echo "===== unmounting '$_LFS' bound over '$_LMT'..."
-            umount "$_LMT"
-        done
+    if [ x"$BEOLD_MPT" != x"/" ] || [ x"$BEOLD" != x"$CURRENT_BE" ] ; then
+        # Note that for updates from non-current BE to another BE,
+        # the script would want to compare some contents of /a and /b
+        do_be_umount "$BEOLD" "$BEOLD_MNT" || BE_RES=$?
+    fi
 
-    echo "===== beadm-unmounting $BENEW ($BENEW_MNT)..."
-    beadm umount "$BENEW_MNT" || \
-    beadm umount "$BENEW"
+    return $BE_RES
 }
 
 do_normalize_mountattrs() {

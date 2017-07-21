@@ -5,7 +5,7 @@
 ### Parameters are passed from ENV VARS (no CLI so far).
 ### Assumes BE's hosted in ZFS, minimal checking enabled for auto-guesses.
 ### Based on http://wiki.openindiana.org/oi/Advanced+-+Split-root+installation
-### Copyright (C) 2013-2014 by Jim Klimov, License: CDDL
+### Copyright (C) 2013-2017 by Jim Klimov, License: CDDL
 
 # First of all, just set missing environment variables
 CURRENT_BE="`beadm list -H | while IFS=";" read BENAME BEGUID BEACT BEMPT BESPACE BEPOLICY BESTAMP; do case "$BEACT" in *N*) echo $BENAME;; esac; done`"
@@ -90,7 +90,9 @@ beadm_clone_routine() {
     echo "    (Press ENTER or CTRL+C)"
     read LINE
 
-    if [ x"$BEOLD_MPT" != x"/" ]; then
+    if [ x"$BEOLD_MPT" != x"/" ] || [ x"$BEOLD" != x"$CURRENT_BE" ] ; then
+        # Note that for updates from non-current BE to another BE,
+        # the script would want to compare some contents of /a and /b
         echo "=== Try to mount $BEOLD at $BEOLD_MNT (not strictly required)..."
         beadm mount "$BEOLD" "$BEOLD_MNT"
     fi
