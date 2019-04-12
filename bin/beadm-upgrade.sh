@@ -383,7 +383,7 @@ do_reconfig() {
 
 do_firefly() {
     [ -x "`dirname "$0"`/beadm-firefly-update.sh" ] && \
-    if [ $RES_PKGIPS -le 0 -a $RES_PKGSRC -le 0 -a $RES_BOOTADM -le 0 ] || \
+    if ( [ $RES_PKGIPS -le 0 -o $RES_PKGIPS = 4 ] && [ $RES_PKGSRC -le 0 -a $RES_BOOTADM -le 0 ] ) || \
        [ -n "`set | egrep '^FIREFLY_[A-Za-z0-9_]*='`" ] \
     ; then
         [ -z "$FIREFLY_CONTAINER_TGT" ] && \
