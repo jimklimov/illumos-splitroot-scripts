@@ -304,7 +304,13 @@ do_upgrade_pkgips() {
         { echo "===== Updating the image with new PKG software via chroot"
           chroot "$BENEW_MNT" /usr/bin/pkg -R / image-update --no-refresh --accept --deny-new-be --no-backup-be
           RES_PKGIPS=$?; [ "$RES_PKGIPS" = 0 ] || [ "$RES_PKGIPS" = 4 ] ; } || \
+        { echo "===== Updating the image with old PKG software via altroot and ignoring the pkg client version constraints"
+          /usr/bin/pkg -R "$BENEW_MNT" image-update --no-refresh --accept --deny-new-be --no-backup-be -f
+          RES_PKGIPS=$?; [ "$RES_PKGIPS" = 0 ] || [ "$RES_PKGIPS" = 4 ] ; } || \
         { echo "===== Updating the image with old PKG software via altroot and allowed refresh"
+          /usr/bin/pkg -R "$BENEW_MNT" image-update --accept --deny-new-be --no-backup-be
+          RES_PKGIPS=$?; [ "$RES_PKGIPS" = 0 ] || [ "$RES_PKGIPS" = 4 ] ; } || \
+        { echo "===== Updating the image with old PKG software via altroot and allowed refresh and ignoring the pkg client version constraints"
           /usr/bin/pkg -R "$BENEW_MNT" image-update --accept --deny-new-be --no-backup-be
           RES_PKGIPS=$?; }
 
