@@ -1,9 +1,11 @@
 # illumos-splitroot-scripts
 My article on "Split-root installation" of illumos-based OSes resulted
 in some code better maintained in Git than in Wiki attachments. See:
-http://wiki.openindiana.org/oi/Advanced+-+Split-root+installation
+http://wiki.openindiana.org/oi/Advanced+-+Split-root+installation or
+https://github.com/jimklimov/illumos-articles/raw/master/articles/Advanced%20-%20Split-root%20installation%20-%20OpenIndiana%20Wiki.mht
+for a backup copy (as MHT archive, most browsers read that).
 
-The SMF method scripts and manifests (and/or patches thereto to cater
+The SMF method scripts and manifests (and/or patches thereto, to cater
 for the posterity) presented here allow to add support for "split-root"
 ZFS root filesystem structure, where the OS image is spread over several
 datasets under a common root (which are automatically cloned with the
