@@ -281,12 +281,20 @@ do_upgrade_pkgips() {
         { echo "===== Refreshing IPS package list"
           /usr/bin/pkg -R "$BENEW_MNT" refresh
           RES_PKGIPS=$?; [ "$RES_PKGIPS" = 0 ] ; } && \
-        { echo "===== Updating PKG software itself"
-          ### This clause should fail if no 'pkg' updates were available, or if a
-          ### chrooted upgrade attempt with the new 'pkg' failed - both ways fall
-          ### through to altroot upgrade attempt
-          /usr/bin/pkg -R "$BENEW_MNT" update --no-refresh --accept --deny-new-be --no-backup-be pkg
-          RES_PKGIPS=$?; [ "$RES_PKGIPS" = 0 ] || [ "$RES_PKGIPS" = 4 ] ; } && \
+        { { echo "===== Updating both PKG and the BE clone with an older client from original BE ==="
+            ### Newer "pkg" clients support a "-f" option to skip the
+            ### client-up-to-date check while updating packages; this
+            ### is expected to "update" most if not all of the software.
+            ### Just in case, we would follow up by "image-update" below.
+            /usr/bin/pkg -R "$BENEW_MNT" update --no-refresh --accept --deny-new-be --no-backup-be -f
+            RES_PKGIPS=$?; [ "$RES_PKGIPS" = 0 ] || [ "$RES_PKGIPS" = 4 ] ; } || \
+          { echo "===== Updating PKG software itself as a separate step ==="
+            ### This clause should fail if no 'pkg' updates were available, or if a
+            ### chrooted upgrade attempt with the new 'pkg' failed - both ways fall
+            ### through to altroot upgrade attempt
+            /usr/bin/pkg -R "$BENEW_MNT" update --no-refresh --accept --deny-new-be --no-backup-be pkg
+            RES_PKGIPS=$?; [ "$RES_PKGIPS" = 0 ] || [ "$RES_PKGIPS" = 4 ] ; }
+        } && \
         { echo "===== Updating the image with new PKG software via chroot with a special variable"
           PKG_LIVE_ROOT=/// chroot "$BENEW_MNT" /usr/bin/pkg -R / image-update --no-refresh --accept --deny-new-be --no-backup-be
           RES_PKGIPS=$?; [ "$RES_PKGIPS" = 0 ] || [ "$RES_PKGIPS" = 4 ] ; } || \
@@ -296,7 +304,13 @@ do_upgrade_pkgips() {
         { echo "===== Updating the image with new PKG software via chroot"
           chroot "$BENEW_MNT" /usr/bin/pkg -R / image-update --no-refresh --accept --deny-new-be --no-backup-be
           RES_PKGIPS=$?; [ "$RES_PKGIPS" = 0 ] || [ "$RES_PKGIPS" = 4 ] ; } || \
+        { echo "===== Updating the image with old PKG software via altroot and ignoring the pkg client version constraints"
+          /usr/bin/pkg -R "$BENEW_MNT" image-update --no-refresh --accept --deny-new-be --no-backup-be -f
+          RES_PKGIPS=$?; [ "$RES_PKGIPS" = 0 ] || [ "$RES_PKGIPS" = 4 ] ; } || \
         { echo "===== Updating the image with old PKG software via altroot and allowed refresh"
+          /usr/bin/pkg -R "$BENEW_MNT" image-update --accept --deny-new-be --no-backup-be
+          RES_PKGIPS=$?; [ "$RES_PKGIPS" = 0 ] || [ "$RES_PKGIPS" = 4 ] ; } || \
+        { echo "===== Updating the image with old PKG software via altroot and allowed refresh and ignoring the pkg client version constraints"
           /usr/bin/pkg -R "$BENEW_MNT" image-update --accept --deny-new-be --no-backup-be
           RES_PKGIPS=$?; }
 
@@ -375,7 +389,7 @@ do_reconfig() {
 
 do_firefly() {
     [ -x "`dirname "$0"`/beadm-firefly-update.sh" ] && \
-    if [ $RES_PKGIPS -le 0 -a $RES_PKGSRC -le 0 -a $RES_BOOTADM -le 0 ] || \
+    if ( [ $RES_PKGIPS -le 0 -o $RES_PKGIPS = 4 ] && [ $RES_PKGSRC -le 0 -a $RES_BOOTADM -le 0 ] ) || \
        [ -n "`set | egrep '^FIREFLY_[A-Za-z0-9_]*='`" ] \
     ; then
         [ -z "$FIREFLY_CONTAINER_TGT" ] && \
