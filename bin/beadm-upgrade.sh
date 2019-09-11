@@ -490,7 +490,7 @@ case "`basename $0`" in
                 echo "FATAL: BENEW not defined, nothing to unmount" && \
                     exit 1
                 trap 'trap_exit_mount $?' 0
-                do_ensure_configs
+                do_ensure_configs || exit
                 do_clone_umount
                 do_normalize_mountattrs
                 ;;
