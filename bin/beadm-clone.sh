@@ -43,6 +43,10 @@ fi
 [ x"$EXCLUDE_ATTRS" = x ] && \
     EXCLUDE_ATTRS='org.opensolaris.libbe:uuid|canmount|mountpoint'
 
+beadm_clone_listattrs() {
+    set | egrep '^BE|^RPOOL|^EXCL|^CURRENT_'
+}
+
 beadm_clone_attrs() {
     # For a more general solution, not tightly coupled with cloning just
     # a moment ago, consider getting 'zfs origin' of the dataset(s) to
@@ -86,7 +90,7 @@ EOF
 
 beadm_clone_routine() {
     echo "=== Will clone $BEOLD into $BENEW, ok? Using these settings:"
-    set | egrep '^BE|^RPOOL|^EXCL'
+    beadm_clone_listattrs
     echo "    (Press ENTER or CTRL+C)"
     read LINE
 
@@ -111,11 +115,19 @@ beadm_clone_routine() {
 }
 
 beadm_clone_wrapper() {
-    if [ x"$_BEADM_CLONE" != "xno" ]; then
-        beadm_clone_routine || return
-        [ x"$_BEADM_CLONE_INFORM" != "xno" ] && \
-            beadm_clone_whatnext
-    fi
+    case "${_BEADM_CLONE}" in
+        no) ;;
+        listattrs|listvars)
+            echo "=== $0 detected the following variables that"
+            echo "=== would be used for BE cloning if it were live:"
+            beadm_clone_listattrs
+            ;;
+        *) # default mode - do it all
+            beadm_clone_routine || return
+            [ x"$_BEADM_CLONE_INFORM" != "xno" ] && \
+                beadm_clone_whatnext
+        ;;
+    esac
     return 0
 }
 
