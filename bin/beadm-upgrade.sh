@@ -32,6 +32,10 @@ trap_exit_upgrade() {
     RES_EXIT=$1
 
     echo ""
+    if [ "$BREAKOUT" = y ]; then
+        echo "===== FATAL : Upgrade was interrupted by a BREAK, summarizing what we have by now:"
+    fi
+
     beadm list $BENEW
     /bin/df -k | awk '( $NF ~ "^'"$BENEW_MNT"'($|/)" ) { print $0 }'
     if [ x"$BEOLD_MPT" != x"/" ] || [ x"$BEOLD" != x"$CURRENT_BE" ] ; then
@@ -105,6 +109,10 @@ trap_exit_mount() {
     RES_EXIT=$1
 
     echo ""
+    if [ "$BREAKOUT" = y ]; then
+        echo "===== FATAL : Mount was interrupted by a BREAK, summarizing what we have by now:"
+    fi
+
     beadm list $BENEW
     /bin/df -k | awk '( $NF ~ "^'"$BENEW_MNT"'($|/)" ) { print $0 }'
     if [ x"$BEOLD_MPT" != x"/" ] || [ x"$BEOLD" != x"$CURRENT_BE" ] ; then
