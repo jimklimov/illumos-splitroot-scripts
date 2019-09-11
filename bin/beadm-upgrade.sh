@@ -31,9 +31,14 @@ BREAKOUT=n
 trap_exit_upgrade() {
     RES_EXIT=$1
 
+    # Allow a quick exit without summarizing
+    trap - 0 1 2 3 15
+    trap "echo 'Punt! Exiting without a complete summary' >&2 ; exit $RES_EXIT;" 1 2 3 15 0
+
     echo ""
     if [ "$BREAKOUT" = y ]; then
         echo "===== FATAL : Upgrade was interrupted by a BREAK, summarizing what we have by now:"
+        sleep 1 || exit
     fi
 
     beadm list $BENEW
@@ -69,14 +74,14 @@ trap_exit_upgrade() {
         echo "rootfs can fail to mount cleanly if versions without split-root support"
         echo "were installed while you do use this extended feature."
         echo ""
-        sleep 10
+        sleep 10 || exit
     fi >&2
 
     if [ $RES_BM_LENGTH -gt $RES_BM_LENGTH_WARN ]; then
         echo ""
         echo "WARNING: Your boot-menu has $RES_BM_LENGTH entries and might fail to boot due to GRUB bugs"
         echo ""
-        sleep 10
+        sleep 10 || exit
     fi >&2
 
     if [ $RES_EXIT = 0 -a $BREAKOUT = n -a \
@@ -99,7 +104,7 @@ trap_exit_upgrade() {
     fi >&2
 
     [ $RES_EXIT = 0 ] && RES_EXIT=126
-    echo "=== FAILED, the upgrade was not completed successfully" \
+    echo "=== MAYBE FAILED, the upgrade was not completed successfully" \
         "or maybe found no new updates; you can remove the new BE with:" >&2
     printf "\tbeadm destroy -Ffsv '$BENEW' \n" >&2
     exit $RES_EXIT
@@ -108,9 +113,14 @@ trap_exit_upgrade() {
 trap_exit_mount() {
     RES_EXIT=$1
 
+    # Allow a quick exit without summarizing
+    trap - 0 1 2 3 15
+    trap "echo 'Punt! Exiting without a complete summary' >&2 ; exit $RES_EXIT;" 1 2 3 15 0
+
     echo ""
     if [ "$BREAKOUT" = y ]; then
         echo "===== FATAL : Mount was interrupted by a BREAK, summarizing what we have by now:"
+        sleep 1 || exit
     fi
 
     beadm list $BENEW
