@@ -13,6 +13,9 @@ export LANG LC_ALL PATH
         echo "FATAL: Can't find beadm-clone.sh" >&2 && \
         exit 1
 
+# The IPS pkg exit code: exit 0 means Command succeeded, exit 4 means
+# No changes were made - nothing to do (on the latest executed command
+# as far as this script is concerned). Any other exit code is an error.
 RES_PKGIPS=-1
 RES_PKGSRC=-1
 RES_BOOTADM=-1
@@ -314,8 +317,13 @@ do_upgrade_pkgips() {
             RES_PKGIPS=$?; [ "$RES_PKGIPS" = 0 ] || [ "$RES_PKGIPS" = 4 ] ; }
         } && \
         { echo "===== Updating the image with new PKG software via chroot with a special variable"
+          # Note that earlier steps might have updated all the packages
+          # already, depending on PKG5 version's capabilities in that OS.
+          # In this case we do not want it to claim "4" (nothing done)
+          # blindly, so better reuse the previous run's result (0 or 4).
+          RES_PKGIPS_PREV="$RES_PKGIPS"
           PKG_LIVE_ROOT=/// chroot "$BENEW_MNT" /usr/bin/pkg -R / image-update --no-refresh --accept --deny-new-be --no-backup-be
-          RES_PKGIPS=$?; [ "$RES_PKGIPS" = 0 ] || [ "$RES_PKGIPS" = 4 ] ; } || \
+          RES_PKGIPS=$?; [ "$RES_PKGIPS" = 0 ] || [ "$RES_PKGIPS" = 4 ] && RES_PKGIPS="$RES_PKGIPS_PREV" ; } || \
         { echo "===== Updating the image with old PKG software via altroot"
           /usr/bin/pkg -R "$BENEW_MNT" image-update --no-refresh --accept --deny-new-be --no-backup-be
           RES_PKGIPS=$?; [ "$RES_PKGIPS" = 0 ] || [ "$RES_PKGIPS" = 4 ] ; } || \
