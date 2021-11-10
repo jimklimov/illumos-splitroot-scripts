@@ -5,8 +5,10 @@
 ### See also: http://wiki.openindiana.org/oi/Advanced+-+Split-root+installation
 
 PATH=/usr/gnu/bin:/usr/sfw/bin:/opt/gnu/bin:/opt/sfw/bin:/opt/omni/bin:/bin:/sbin:/usr/sbin:/usr/bin:$PATH
-LANG=C
-LC_ALL=C
+#LANG=C
+#LC_ALL=C
+LANG=en_US.UTF-8
+LC_ALL=en_US.UTF-8
 export LANG LC_ALL PATH
 
 [ ! -s "`dirname $0`/beadm-clone.sh" ] && \
