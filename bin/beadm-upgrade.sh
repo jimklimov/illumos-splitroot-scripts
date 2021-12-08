@@ -449,8 +449,8 @@ do_system_shell_ldd_recursive() {
 do_system_shell() {
     # Support maintentance of system shell and the libraries it pulls
     # to be usable without dependency on /usr contents; only if this
-    # deployment already has it set up in such manner:
-
+    # deployment already has it set up in such manner, e.g. explicitly by
+    #   RPOOLALT=/ DO_SYSTEM_SHELL=true ./beadm-system_shell.sh
     # Currently this is maintained for the specific case of original
     # (distro-updated) copy of (/usr)/bin/i86/ksh93 (aka (/usr)/bin/sh)
     # that gets copied as /sbin/ksh93(.version) and symlinked as /sbin/sh
