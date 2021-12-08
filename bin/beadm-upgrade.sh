@@ -1,8 +1,9 @@
 #!/bin/bash
 
 ### Run package upgrades in a new BE (created by a call to beadm-clone.sh)
-### Copyright (C) 2014-2017 by Jim Klimov, License: CDDL
+### Copyright (C) 2014-2021 by Jim Klimov, License: CDDL
 ### See also: http://wiki.openindiana.org/oi/Advanced+-+Split-root+installation
+### or https://web.archive.org/web/20200429155209/https://wiki.openindiana.org/oi/Advanced+-+Split-root+installation
 
 PATH=/usr/gnu/bin:/usr/sfw/bin:/opt/gnu/bin:/opt/sfw/bin:/opt/omni/bin:/bin:/sbin:/usr/sbin:/usr/bin:$PATH
 #LANG=C
