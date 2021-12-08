@@ -435,7 +435,7 @@ do_firefly() {
 do_system_shell_ldd() {
     [ -L "$1" ] && return 1
     echo "$1" >&2
-    LD_LIBRARY_PATH="$RPOOLALT/usr/lib:$RPOOLALT/lib" ldd "$1" | awk '{print $NF}'
+    LD_LIBRARY_PATH="$BENEW_MNT/usr/lib:$BENEW_MNT/lib" ldd "$1" | awk '{print $NF}'
 }
 
 do_system_shell_ldd_recursive() {
@@ -450,32 +450,32 @@ do_system_shell() {
     # Support maintentance of system shell and the libraries it pulls
     # to be usable without dependency on /usr contents; only if this
     # deployment already has it set up in such manner, e.g. explicitly by
-    #   RPOOLALT=/ DO_SYSTEM_SHELL=true ./beadm-system_shell.sh
+    #   BENEW_MNT=/ DO_SYSTEM_SHELL=true ./beadm-system_shell.sh
     # Currently this is maintained for the specific case of original
     # (distro-updated) copy of (/usr)/bin/i86/ksh93 (aka (/usr)/bin/sh)
     # that gets copied as /sbin/ksh93(.version) and symlinked as /sbin/sh
     # including the libraries it needs (recursively) to all be under /lib
 
     # TODO? Also sparcv7? And/or 64-bit - not seen in OI, but... PRs welcome.
-    if [ -s "$RPOOLALT/usr/bin/i86/ksh93" ] \
+    if [ -s "$BENEW_MNT/usr/bin/i86/ksh93" ] \
     && ( [ "${DO_SYSTEM_SHELL-}" = true ] \
-         || ( [ -L "$RPOOLALT/sbin/sh" ] \
-              && [ -s "$RPOOLALT/sbin/ksh93" ] \
-              && [ -L "$RPOOLALT/sbin/ksh93" ] \
-              && [ ! -L "$RPOOLALT/usr/bin/i86/ksh93" ] \
-              && diff "$RPOOLALT/sbin/sh" "$RPOOLALT/sbin/ksh93" ) \
+         || ( [ -L "$BENEW_MNT/sbin/sh" ] \
+              && [ -s "$BENEW_MNT/sbin/ksh93" ] \
+              && [ -L "$BENEW_MNT/sbin/ksh93" ] \
+              && [ ! -L "$BENEW_MNT/usr/bin/i86/ksh93" ] \
+              && diff "$BENEW_MNT/sbin/sh" "$BENEW_MNT/sbin/ksh93" ) \
     ) ; then
-        echo "=== Processing maintenance of /sbin/ksh93 as /sbin/sh in $RPOOLALT" >&2
+        echo "=== Processing maintenance of /sbin/ksh93 as /sbin/sh in $BENEW_MNT" >&2
         TS="`date +%Y%m%d`"
         RES_SYSTEM_SHELL=0
 
         if [ "${DO_SYSTEM_SHELL-}" = true ] ; then
             # Caller forced their way in to set this copy up as the system shell
-            if ! diff "$RPOOLALT/sbin/sh" "$RPOOLALT/sbin/ksh93" ; then
-                # Some other binary is the current shell in RPOOLALT
-                echo "===== Symlinking 'ksh93' as '$RPOOLALT/sbin/sh'..." >&2
-                mv -f "$RPOOLALT/sbin/sh" "$RPOOLALT/sbin/sh.orig.$TS" \
-                && ln -s "ksh93" "$RPOOLALT/sbin/sh" \
+            if ! diff "$BENEW_MNT/sbin/sh" "$BENEW_MNT/sbin/ksh93" ; then
+                # Some other binary is the current shell in BENEW_MNT
+                echo "===== Symlinking 'ksh93' as '$BENEW_MNT/sbin/sh'..." >&2
+                mv -f "$BENEW_MNT/sbin/sh" "$BENEW_MNT/sbin/sh.orig.$TS" \
+                && ln -s "ksh93" "$BENEW_MNT/sbin/sh" \
                 || { RES_SYSTEM_SHELL=$? ; return $RES_SYSTEM_SHELL; }
                 # If currently missing, it should appear when the logic below is done
             fi # else (old) /sbin/ksh93 already is /sbin/sh, go on
@@ -483,43 +483,43 @@ do_system_shell() {
 
         # TODO: Recurse the list via LDD
         #for L in libast libcmd libdll libshell libsum ; do
-        do_system_shell_ldd_recursive "$RPOOLALT/usr/bin/i86/ksh93" 2>&1 \
+        do_system_shell_ldd_recursive "$BENEW_MNT/usr/bin/i86/ksh93" 2>&1 \
         | grep -v -E '/ksh93$' | sort | uniq \
-        | sed "s,^$RPOOLALT/usr/lib/,," \
+        | sed "s,^$BENEW_MNT/usr/lib/,," \
         | while read L ; do
-            ls -la $(realpath "$RPOOLALT/usr/lib/$L") $(realpath "$RPOOLALT/lib/$L") || true
+            ls -la $(realpath "$BENEW_MNT/usr/lib/$L") $(realpath "$BENEW_MNT/lib/$L") || true
 
-            if [ -s "$RPOOLALT/usr/lib/$L" ] \
-            && [ ! -L "$RPOOLALT/usr/lib/$L" ] \
+            if [ -s "$BENEW_MNT/usr/lib/$L" ] \
+            && [ ! -L "$BENEW_MNT/usr/lib/$L" ] \
             ; then
-                if diff "$RPOOLALT/usr/lib/$L" "$RPOOLALT/lib/$L"; then
-                    echo "===== No update needed for '$RPOOLALT/lib/$L' detailed above" >&2
+                if diff "$BENEW_MNT/usr/lib/$L" "$BENEW_MNT/lib/$L"; then
+                    echo "===== No update needed for '$BENEW_MNT/lib/$L' detailed above" >&2
                     continue
                 fi
 
-                cp -pf "$RPOOLALT/usr/lib/$L" "$RPOOLALT/lib/$L.$TS" \
-                && ln -fs "$L.$TS" "$RPOOLALT/lib/$L" \
+                cp -pf "$BENEW_MNT/usr/lib/$L" "$BENEW_MNT/lib/$L.$TS" \
+                && ln -fs "$L.$TS" "$BENEW_MNT/lib/$L" \
                 || { RES_SYSTEM_SHELL=$? ; return $RES_SYSTEM_SHELL; }
             fi
         done
 
-        if [ -s "$RPOOLALT/usr/bin/i86/ksh93" ] \
-        && [ ! -L "$RPOOLALT/usr/bin/i86/ksh93" ] \
+        if [ -s "$BENEW_MNT/usr/bin/i86/ksh93" ] \
+        && [ ! -L "$BENEW_MNT/usr/bin/i86/ksh93" ] \
         ; then
-            ls -la "$RPOOLALT/usr/bin/i86/ksh93" "$RPOOLALT/bin/sh" \
-                "$RPOOLALT/sbin/sh" "$RPOOLALT/sbin/ksh93"* \
+            ls -la "$BENEW_MNT/usr/bin/i86/ksh93" "$BENEW_MNT/bin/sh" \
+                "$BENEW_MNT/sbin/sh" "$BENEW_MNT/sbin/ksh93"* \
             || true
 
-            if diff "$RPOOLALT/usr/bin/i86/ksh93" "$RPOOLALT/sbin/ksh93"; then
-                echo "===== No update needed for '$RPOOLALT/sbin/ksh93' detailed above" >&2
+            if diff "$BENEW_MNT/usr/bin/i86/ksh93" "$BENEW_MNT/sbin/ksh93"; then
+                echo "===== No update needed for '$BENEW_MNT/sbin/ksh93' detailed above" >&2
             else
-                cp -pf "$RPOOLALT/usr/bin/i86/ksh93" "$RPOOLALT/sbin/ksh93.$TS" \
-                && ln -fs "ksh93.$TS" "$RPOOLALT/sbin/ksh93" \
+                cp -pf "$BENEW_MNT/usr/bin/i86/ksh93" "$BENEW_MNT/sbin/ksh93.$TS" \
+                && ln -fs "ksh93.$TS" "$BENEW_MNT/sbin/ksh93" \
                 || { RES_SYSTEM_SHELL=$? ; return $RES_SYSTEM_SHELL; }
             fi
         fi
     else
-        echo "=== Skipping maintenance of /sbin/ksh93 as /sbin/sh in $RPOOLALT" >&2
+        echo "=== Skipping maintenance of /sbin/ksh93 as /sbin/sh in $BENEW_MNT" >&2
         RES_SYSTEM_SHELL=0
     fi
 
@@ -621,10 +621,10 @@ case "`basename $0`" in
                 do_clone_mount
                 ;;
     *system_shell*)
-                [ -z "$BENEW" ] && [ -z "$RPOOLALT" ] && \
-                echo "FATAL: neither BENEW nor RPOOLALT are defined, nothing to manage (export RPOOLALT=/ to manage current BE)" && \
+                [ -z "$BENEW" ] && [ -z "$BENEW_MNT" ] && \
+                echo "FATAL: neither BENEW nor BENEW_MNT are defined, nothing to manage (export BENEW_MNT=/ to manage current BE)" && \
                     exit 1
-                if [ "$RPOOLALT" != "/" ]; then
+                if [ "$BENEW_MNT" != "/" ]; then
                     trap 'trap_exit_mount $?' 0
                     do_ensure_configs || exit
                     do_clone_mount || exit
