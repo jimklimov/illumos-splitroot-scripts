@@ -23,6 +23,7 @@ RES_PKGIPS=-1
 RES_PKGSRC=-1
 RES_BOOTADM=-1
 RES_FIREFLY=-1
+RES_SYSTEM_SHELL=-1
 
 # Checks about changed SMF method scripts interesting to splitroot project
 RES_FS_METHODS=-1
@@ -69,7 +70,7 @@ trap_exit_upgrade() {
         do_normalize_mountattrs
     fi
 
-    echo "=== Done: PKGIPS=$RES_PKGIPS PKGSRC=$RES_PKGSRC BOOTADM=$RES_BOOTADM FIREFLY=$RES_FIREFLY RES_FS_METHODS=$RES_FS_METHODS RES_BM_LENGTH=$RES_BM_LENGTH"
+    echo "=== Done: PKGIPS=$RES_PKGIPS PKGSRC=$RES_PKGSRC BOOTADM=$RES_BOOTADM FIREFLY=$RES_FIREFLY RES_SYSTEM_SHELL=$RES_SYSTEM_SHELL RES_FS_METHODS=$RES_FS_METHODS RES_BM_LENGTH=$RES_BM_LENGTH"
 
     if [ $RES_FS_METHODS -gt 0 ]; then
         echo ""
@@ -431,6 +432,82 @@ do_firefly() {
     fi
 }
 
+do_system_shell() {
+    # Support maintentance of system shell and the libraries it pulls
+    # to be usab;e without dependency on /usr contents; only if this
+    # deployment already has it set up in such manner:
+
+    # Currently this is maintained for the specific case of original
+    # (distro-updated) copy of (/usr)/bin/i86/ksh93 (aka (/usr)/bin/sh)
+    # that gets copied as /sbin/ksh93(.version) and symlinked as /sbin/sh
+    # including the libraries it needs (recursively) to all be under /lib
+
+    # TODO? Also sparcv7? And/or 64-bit - not seen in OI, but... PRs welcome.
+    if [ -s "$RPOOLALT/usr/bin/i86/ksh93" ] \
+    && ( [ "${DO_SYSTEM_SHELL-}" = true ] \
+         || ( [ -L "$RPOOLALT/sbin/sh" ] \
+              && [ -s "$RPOOLALT/sbin/ksh93" ] \
+              && [ -L "$RPOOLALT/sbin/ksh93" ] \
+              && [ ! -L "$RPOOLALT/usr/bin/i86/ksh93" ] \
+              && diff "$RPOOLALT/sbin/sh" "$RPOOLALT/sbin/ksh93" ) \
+    ) ; then
+        echo "=== Processing maintenance of /sbin/ksh93 as /sbin/sh in $RPOOLALT" >&2
+        TS="`date +%Y%m%d`"
+        RES_SYSTEM_SHELL=0
+
+        if [ "${DO_SYSTEM_SHELL-}" = true ] ; then
+            # Caller forced their way in to set this copy up as the system shell
+            if ! diff "$RPOOLALT/sbin/sh" "$RPOOLALT/sbin/ksh93" ; then
+                # Some other binary is the current shell in RPOOLALT
+                echo "===== Symlinking 'ksh93' as '$RPOOLALT/sbin/sh'..." >&2
+                mv -f "$RPOOLALT/sbin/sh" "$RPOOLALT/sbin/sh.orig.$TS" \
+                && ln -s "ksh93" "$RPOOLALT/sbin/sh" \
+                || { RES_SYSTEM_SHELL=$? ; return $RES_SYSTEM_SHELL; }
+                # If currently missing, it should appear when the logic below is done
+            fi # else (old) /sbin/ksh93 already is /sbin/sh, go on
+        fi
+
+        # TODO: Recurse the list via LDD
+        for L in libast libcmd libdll libshell libsum ; do
+            ls -la $(realpath "$RPOOLALT/usr/lib/$L.so.1") $(realpath "$RPOOLALT/lib/$L.so.1") || true
+
+            if [ -s "$RPOOLALT/usr/lib/$L.so.1" ] \
+            && [ ! -L "$RPOOLALT/usr/lib/$L.so.1" ] \
+            ; then
+                if diff "$RPOOLALT/usr/lib/$L.so.1" "$RPOOLALT/lib/$L.so.1"; then
+                    echo "===== No update needed for '$RPOOLALT/lib/$L.so.1'" >&2
+                    continue
+                fi
+
+                cp -pf "$RPOOLALT/usr/lib/$L.so.1" "$RPOOLALT/lib/$L.so.1.$TS" \
+                && ln -fs "$L.so.1.$TS" "$RPOOLALT/lib/$L.so.1" \
+                || { RES_SYSTEM_SHELL=$? ; return $RES_SYSTEM_SHELL; }
+            fi
+        done
+
+        if [ -s "$RPOOLALT/usr/bin/i86/ksh93" ] \
+        && [ ! -L "$RPOOLALT/usr/bin/i86/ksh93" ] \
+        ; then
+            ls -la "$RPOOLALT/usr/bin/i86/ksh93" "$RPOOLALT/bin/sh" \
+                "$RPOOLALT/sbin/sh" "$RPOOLALT/sbin/ksh93"* \
+            || true
+
+            if diff "$RPOOLALT/usr/bin/i86/ksh93" "$RPOOLALT/sbin/ksh93"; then
+                echo "===== No update needed for '$RPOOLALT/sbin/ksh93'" >&2
+            else
+                cp -pf "$RPOOLALT/usr/bin/i86/ksh93" "$RPOOLALT/sbin/ksh93.$TS" \
+                && ln -fs "ksh93.$TS" "$RPOOLALT/sbin/ksh93" \
+                || { RES_SYSTEM_SHELL=$? ; return $RES_SYSTEM_SHELL; }
+            fi
+        fi
+    else
+        echo "=== Skipping maintenance of /sbin/ksh93 as /sbin/sh in $RPOOLALT" >&2
+        RES_SYSTEM_SHELL=0
+    fi
+
+    return $RES_SYSTEM_SHELL
+}
+
 check_fs_methods() {
     RES_FS_METHODS=0
     for F in fs-root fs-minimal fs-usr fs-root-zfs net-iptun net-nwam net-physical ; do
@@ -491,6 +568,9 @@ do_upgrade() {
     do_upgrade_pkgsrc
 
     echo ""
+    do_system_shell
+
+    echo ""
     do_reconfig
 
     echo ""
@@ -521,6 +601,17 @@ case "`basename $0`" in
                 trap 'trap_exit_mount $?' 0
                 do_ensure_configs || exit
                 do_clone_mount
+                ;;
+    *system_shell*)
+                [ -z "$BENEW" ] && [ -z "$RPOOLALT" ] && \
+                echo "FATAL: neither BENEW nor RPOOLALT are defined, nothing to manage (export RPOOLALT=/ to manage current BE)" && \
+                    exit 1
+                if [ "$RPOOLALT" != "/" ]; then
+                    trap 'trap_exit_mount $?' 0
+                    do_ensure_configs || exit
+                    do_clone_mount || exit
+                fi
+                do_system_shell
                 ;;
     *)          echo "FATAL: Command not determined: $@"
                 exit 1
