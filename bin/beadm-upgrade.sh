@@ -432,9 +432,23 @@ do_firefly() {
     fi
 }
 
+do_system_shell_ldd() {
+    [ -L "$1" ] && return 1
+    echo "$1" >&2
+    LD_LIBRARY_PATH="$RPOOLALT/usr/lib:$RPOOLALT/lib" ldd "$1" | awk '{print $NF}'
+}
+
+do_system_shell_ldd_recursive() {
+    do_system_shell_ldd "$1" | \
+    while read LF ; do
+        #[ -L "$LF" ] && continue
+        do_system_shell_ldd_recursive "$LF" || break
+    done
+}
+
 do_system_shell() {
     # Support maintentance of system shell and the libraries it pulls
-    # to be usab;e without dependency on /usr contents; only if this
+    # to be usable without dependency on /usr contents; only if this
     # deployment already has it set up in such manner:
 
     # Currently this is maintained for the specific case of original
@@ -468,19 +482,23 @@ do_system_shell() {
         fi
 
         # TODO: Recurse the list via LDD
-        for L in libast libcmd libdll libshell libsum ; do
-            ls -la $(realpath "$RPOOLALT/usr/lib/$L.so.1") $(realpath "$RPOOLALT/lib/$L.so.1") || true
+        #for L in libast libcmd libdll libshell libsum ; do
+        do_system_shell_ldd_recursive "$RPOOLALT/usr/bin/i86/ksh93" 2>&1 \
+        | grep -v -E '/ksh93$' | sort | uniq \
+        | sed "s,^$RPOOLALT/usr/lib/,," \
+        | while read L ; do
+            ls -la $(realpath "$RPOOLALT/usr/lib/$L") $(realpath "$RPOOLALT/lib/$L") || true
 
-            if [ -s "$RPOOLALT/usr/lib/$L.so.1" ] \
-            && [ ! -L "$RPOOLALT/usr/lib/$L.so.1" ] \
+            if [ -s "$RPOOLALT/usr/lib/$L" ] \
+            && [ ! -L "$RPOOLALT/usr/lib/$L" ] \
             ; then
-                if diff "$RPOOLALT/usr/lib/$L.so.1" "$RPOOLALT/lib/$L.so.1"; then
-                    echo "===== No update needed for '$RPOOLALT/lib/$L.so.1'" >&2
+                if diff "$RPOOLALT/usr/lib/$L" "$RPOOLALT/lib/$L"; then
+                    echo "===== No update needed for '$RPOOLALT/lib/$L' detailed above" >&2
                     continue
                 fi
 
-                cp -pf "$RPOOLALT/usr/lib/$L.so.1" "$RPOOLALT/lib/$L.so.1.$TS" \
-                && ln -fs "$L.so.1.$TS" "$RPOOLALT/lib/$L.so.1" \
+                cp -pf "$RPOOLALT/usr/lib/$L" "$RPOOLALT/lib/$L.$TS" \
+                && ln -fs "$L.$TS" "$RPOOLALT/lib/$L" \
                 || { RES_SYSTEM_SHELL=$? ; return $RES_SYSTEM_SHELL; }
             fi
         done
@@ -493,7 +511,7 @@ do_system_shell() {
             || true
 
             if diff "$RPOOLALT/usr/bin/i86/ksh93" "$RPOOLALT/sbin/ksh93"; then
-                echo "===== No update needed for '$RPOOLALT/sbin/ksh93'" >&2
+                echo "===== No update needed for '$RPOOLALT/sbin/ksh93' detailed above" >&2
             else
                 cp -pf "$RPOOLALT/usr/bin/i86/ksh93" "$RPOOLALT/sbin/ksh93.$TS" \
                 && ln -fs "ksh93.$TS" "$RPOOLALT/sbin/ksh93" \
