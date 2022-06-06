@@ -238,11 +238,15 @@ Copyright (C) 2013-2015 by Jim Klimov, License: CDDL
  			# no need to clear custom_policy_file as it isn't "custom"
 --- /lib/svc/method/net-physical.orig-oi151a8	2013-07-21 16:35:53.000000000 +0200
 +++ /lib/svc/method/net-physical	2013-11-26 19:55:04.811003487 +0100
-@@ -38,10 +38,13 @@
+@@ -38,7 +38,6 @@
  #
  smf_configure_ip || exit $SMF_EXIT_OK
  
 -
+ # Make sure that the libraries essential to this stage of booting can be found.
+ LD_LIBRARY_PATH=/lib; export LD_LIBRARY_PATH
+ 
+@@ -41,6 +41,10 @@
  # Make sure that the libraries essential to this stage of booting can be found.
  LD_LIBRARY_PATH=/lib; export LD_LIBRARY_PATH
  
@@ -266,3 +270,19 @@ Copyright (C) 2013-2015 by Jim Klimov, License: CDDL
  	if  [[ "$state" != "disabled" && $current != *Z* ]]; then
  		#
  		# skip if not a persistent interface, or if it should get IP
+--- /lib/svc/method/net-physical.orig-oi2021.10	2022-06-06 16:35:53.000000000 +0200
++++ /lib/svc/method/net-physical	2022-06-06 19:55:04.811003487 +0100
+@@ -163,10 +163,10 @@
+ bringup_ipif()
+ {
+ 	for showif_output in `\
+ 	    /sbin/ipadm show-if -p -o ifname,state,current`; do
+-		intf=`echo $showif_output | /usr/bin/cut -f1 -d:`
+-		state=`echo $showif_output | /usr/bin/cut -f2 -d:`
+-		current=`echo $showif_output | /usr/bin/cut -f3 -d:`
++		intf=`echo $showif_output | $CUT -f1 -d:`
++		state=`echo $showif_output | $CUT -f2 -d:`
++		current=`echo $showif_output | $CUT -f3 -d:`
+ 		if  [[ "$state" != "disabled" && $current != *Z* ]]; then
+ 			#
+ 			# skip if not a persistent interface, or if it should get IP
