@@ -1,11 +1,13 @@
 # illumos-splitroot-scripts
 My article on "Split-root installation" of illumos-based OSes resulted
-in some code better maintained in Git than in Wiki attachments. See:
-http://wiki.openindiana.org/oi/Advanced+-+Split-root+installation or
+in some code better maintained in Git than in Wiki attachments.
+
+The article should be backed up at
 https://github.com/jimklimov/illumos-articles/raw/master/articles/Advanced%20-%20Split-root%20installation%20-%20OpenIndiana%20Wiki.mht
-for a backup copy (as MHT archive, most browsers read that), or
+(as MHT archive, most browsers read that), or see
 https://web.archive.org/web/20200429155209/https://wiki.openindiana.org/oi/Advanced+-+Split-root+installation
-for another backup.
+for another backup. Some time ago it was originally posted at
+http://wiki.openindiana.org/oi/Advanced+-+Split-root+installation
 
 The SMF method scripts and manifests (and/or patches thereto, to cater
 for the posterity) presented here allow to add support for "split-root"
@@ -152,6 +154,12 @@ the new rootfs:
 When you next utter `./beadm-update.sh` or `./beadm-firefly-update.sh`,
 your system should use a failsafe enviromnent based on this template
 rootfs, if things go south.
+
+For related trickery, please see also:
+
+* https://github.com/jimklimov/illumos-articles
+* https://github.com/jimklimov/illumos-smf-zfspools
+* https://github.com/jimklimov/illumos-smf-zones
 
 Hope this helps,
 Jim Klimov
